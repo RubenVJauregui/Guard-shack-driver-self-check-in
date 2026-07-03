@@ -121,6 +121,18 @@ document.querySelector("#loginMode").addEventListener("change", (event) => {
   document.querySelector(".login-alt").style.display = apptMode ? "grid" : "none";
 });
 
+function isDropOffEmpty() {
+  const task = (form.elements.entryTask?.value || "").trim().toLowerCase();
+  return task === "drop off empty";
+}
+
+document.querySelector("#entryTaskSelect").addEventListener("change", () => {
+  const loadFields = document.querySelector("#loadFieldsRow");
+  if (loadFields) {
+    loadFields.style.display = isDropOffEmpty() ? "none" : "grid";
+  }
+});
+
 // After 3 failed PO/RN/Load lookups, show this message (from Excel B1)
 const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
 let rnLookupAttempts = 0;
@@ -152,6 +164,14 @@ nextBtn.addEventListener("click", async () => {
   // Step 3: validate PO/RN/Load # against WMS before proceeding
   if (currentScreen === 3) {
     if (!validateScreen()) return;
+
+    // Drop Off Empty: skip PO/RN/Load validation entirely
+    if (isDropOffEmpty()) {
+      buildReview();
+      showScreen(currentScreen + 1);
+      return;
+    }
+
     const data = getFormData();
     const rnValue = (data.referenceNo || data.loadNo || "").trim();
 
@@ -436,12 +456,29 @@ async function completeCheckin() {
 
   const identityUrl = await saveIdentityRecord(identityRecord);
 
-  doorInstruction.textContent = assignment;
-  identityQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&data=${encodeURIComponent(identityUrl)}`;
-  identityQrLink.href = identityUrl;
-  etNumberEl.textContent = `ET# ${etNumber}`;
-  rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
-  completionDetails.textContent = `${data.firstName || "Driver"}, your ${data.entryTask || "check-in"} has been recorded.`;
+  // Drop Off Empty: show ET, drop-off message, hide QR
+  if (isDropOffEmpty()) {
+    doorInstruction.textContent = "Please drop off the container and see the employee for further instructions.";
+    identityQr.style.display = "none";
+    identityQrLink.style.display = "none";
+    const qrHelp = document.querySelector(".qr-help");
+    if (qrHelp) qrHelp.style.display = "none";
+    etNumberEl.textContent = `ET# ${etNumber}`;
+    rnNumberEl.textContent = "";
+    completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
+  } else {
+    doorInstruction.textContent = assignment;
+    identityQr.style.display = "";
+    identityQrLink.style.display = "";
+    const qrHelp = document.querySelector(".qr-help");
+    if (qrHelp) qrHelp.style.display = "";
+    identityQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&data=${encodeURIComponent(identityUrl)}`;
+    identityQrLink.href = identityUrl;
+    etNumberEl.textContent = `ET# ${etNumber}`;
+    rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
+    completionDetails.textContent = `${data.firstName || "Driver"}, your ${data.entryTask || "check-in"} has been recorded.`;
+  }
+
   localStorage.setItem("driverCheckinDraft", JSON.stringify(data));
   localStorage.setItem("driverIdentityData", JSON.stringify(identityRecord));
   return true;
