@@ -29,7 +29,25 @@ function getUserIdFromJwt(token) {
     const parts = String(token || "").split(".");
     if (parts.length < 2) return "";
     const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
-    return payload.userId || payload.user_id || payload.uid || payload.sub || payload.id || "";
+    // Item IAM tokens store user_id inside a nested "data" claim
+    const dataBlock = payload.data || {};
+    const candidates = [
+      dataBlock.user_id,
+      dataBlock.userId,
+      payload.user_id,
+      payload.userId,
+      payload.uid,
+      payload.sub,
+      payload.id
+    ];
+    for (const c of candidates) {
+      if (c && /^\d{10,}$/.test(String(c))) return String(c);
+    }
+    // Fallback: return first truthy candidate even if not numeric
+    for (const c of candidates) {
+      if (c) return String(c);
+    }
+    return "";
   } catch (_err) {
     return "";
   }
@@ -45,6 +63,9 @@ async function getWmsBearerToken() {
   if (WMS_AUTH_TOKEN) {
     console.log("[WMS auth] Using static WMS_AUTH_TOKEN");
     cachedWmsUserId = cachedWmsUserId || getUserIdFromJwt(WMS_AUTH_TOKEN);
+    if (cachedWmsUserId) {
+      console.log(`[WMS auth] userId source=static-token-jwt, isNumeric=${/^\d{10,}$/.test(cachedWmsUserId)}, length=${cachedWmsUserId.length}`);
+    }
     return WMS_AUTH_TOKEN;
   }
   const password = getWmsPassword();
@@ -96,7 +117,12 @@ function wmsPasswordLogin(username, password) {
           const token = parsed?.data?.accessToken || parsed?.data?.access_token || parsed?.accessToken || parsed?.access_token || parsed?.token || "";
           const userId = parsed?.data?.userId || parsed?.data?.user_id || parsed?.data?.id || parsed?.data?.user?.userId || parsed?.data?.user?.id || parsed?.userId || parsed?.id || getUserIdFromJwt(token) || "";
           if (token) {
-            if (userId) cachedWmsUserId = userId;
+            if (userId) {
+              cachedWmsUserId = String(userId);
+              console.log(`[WMS auth] userId source=login-response, isNumeric=${/^\d{10,}$/.test(cachedWmsUserId)}, length=${cachedWmsUserId.length}`);
+            } else {
+              console.log("[WMS auth] WARNING: no userId found in login response or JWT");
+            }
             resolve(token);
           } else {
             reject(new Error(`No token in response (code=${parsed?.code}, msg=${parsed?.msg || parsed?.message || ""})`));
@@ -149,10 +175,16 @@ function exchangeWmsForYms(wmsToken) {
       return;
     }
 
+    // YMS expects numeric IAM user ID (e.g. 2008267700036030466)
+    const userId = String(cachedWmsUserId);
+    if (!/^\d+$/.test(userId)) {
+      console.log(`[YMS auth] WARNING: userId "${userId}" is not numeric — YMS may reject it`);
+    }
+
     const exchangeUrl = new URL(`${YMS_BASE_URL}/auth/login-by-wms-token`);
-    const postBody = JSON.stringify({ userId: cachedWmsUserId, wmsToken });
+    const postBody = JSON.stringify({ userId, wmsToken });
     const mod = exchangeUrl.protocol === "https:" ? https : http;
-    console.log(`[YMS auth] exchange request: hasUserId=${Boolean(cachedWmsUserId)}, hasWmsToken=${Boolean(wmsToken)}, bodyLength=${postBody.length}`);
+    console.log(`[YMS auth] exchange request: userId length=${userId.length}, isNumeric=${/^\d+$/.test(userId)}, bodyLength=${postBody.length}`);
     const req = mod.request(exchangeUrl, {
       method: "POST",
       headers: {
