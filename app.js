@@ -1,57 +1,33 @@
-const doorBetweenCustomers = [
-  "RST",
-  "KING'S HAWAIIAN",
-  "MAMMA CHIA",
-  "MELOGRANO DRINKS LLC",
-  "MUSE ORGANIC LLC",
-  "NATURAL DECADENCE LLC",
-  "ORGAIN, LLC",
-  "OVERSEAS FOOD TRADING",
-  "POMPEIAN INC",
-  "PREFERRED BRANDS",
-  "RECOVERY SPORTS LLC",
-  "RISE BEVERAGES LLC DBA",
-  "SANS WINE & SPIRITS",
-  "UPTIME ENERGY INC",
-  "WATER PLUS LLC",
-  "ZEN BEVERAGE LLC",
-  "TCL - Solar Cell"
-];
-
-const dock144Customers = [
+const dock98_97Customers = [
+  "UNIS TRANSPORTATION",
   "ALL MARKET INC / VITA COCO",
-  "COME READY FOODS",
-  "HINT INC",
-  "SOURCE86",
-  "KACE TEA LLC",
-  "PLEASS GLOBAL LIMITED",
-  "PREFERRED BRANDS",
-  "RITUAL BEVERAGE COMPANY",
-  "ROAR BEVERAGES INC",
-  "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
-  "SPLENDOR WATER LLC",
-  "WISMETTAC ASIAN FOODS"
+  "SAFE CATCH",
+  "GALANZ",
+  "TCL",
+  "SPLENDOR",
+  "STRON",
+  "KING COFFEE",
+  "ZURU",
+  "DELMAR"
 ];
 
-const door45Customers = [
-  "TCL NORTH AMERICA",
-  "LENNOX INDUSTRIES INC.",
-  "AMIEE LYNN, LNC.",
-  "KARAKA, LLC",
-  "NZXT",
-  "CMPC USA (Cut Paper and Rolls)",
-  "WOODY FLAW CREST INC",
-  "North Star",
-  "CMPC USA",
-  "La Jolla",
-  "ESI",
-  "TPV USA",
-  "Gurunanda",
-  "the only bean"
+const dock75_74Customers = [
+  "NATUS",
+  "STRON",
+  "FED EX UPS"
+];
+
+const dock56_55Customers = [
+  "SCHINDLER",
+  "LIPPERT",
+  "NIAGARA BOTTLING LLC-RESIN",
+  "MAMMC"
 ];
 
 const rnToCustomerMap = {
-  "1002407259": "NZXT"
+  "4700011468": { customer: "ALL MARKET INC / VITA COCO", type: "inbound", receiptId: "RN-6380", poNo: "4700011468", referenceNo: "0080804544" },
+  "RN-6380": { customer: "ALL MARKET INC / VITA COCO", type: "inbound", receiptId: "RN-6380", poNo: "4700011468", referenceNo: "0080804544" },
+  "0080804544": { customer: "ALL MARKET INC / VITA COCO", type: "inbound", receiptId: "RN-6380", poNo: "4700011468", referenceNo: "0080804544" }
 };
 
 const screenTitles = [
@@ -84,7 +60,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...doorBetweenCustomers, ...door45Customers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...dock98_97Customers, ...dock75_74Customers, ...dock56_55Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -134,7 +110,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message (from Excel B1)
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to Dock 98";
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -156,7 +132,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showActionError("Go to the door between docks 165 & 166 and see the employee");
+      showActionError("Go to Dock 98 and see the employee");
     }
     return;
   }
@@ -173,15 +149,15 @@ nextBtn.addEventListener("click", async () => {
     }
 
     const data = getFormData();
-    const rnValue = (data.referenceNo || data.loadNo || "").trim();
+    const identifiers = getLoadIdentifiers(data);
 
-    if (!rnValue) {
-      showActionError("Please enter a PO / RN / Load # before continuing.");
+    if (!identifiers.length) {
+      showActionError("Please enter a Reference / PO / RN / Load # before continuing.");
       return;
     }
 
-    // Skip re-lookup if same value already validated
-    if (rnValue === lastValidatedRn && lastValidatedRnResult && lastValidatedRnResult.customer) {
+    const validationKey = identifiers.join("|");
+    if (validationKey === lastValidatedRn && lastValidatedRnResult && lastValidatedRnResult.customer) {
       buildReview();
       showScreen(currentScreen + 1);
       return;
@@ -191,23 +167,24 @@ nextBtn.addEventListener("click", async () => {
     nextBtn.textContent = "Verifying...";
     clearActionError();
 
-    const wmsResult = await resolveCustomerFromRn(rnValue);
+    const wmsResult = await resolveCustomerFromIdentifiers(identifiers);
 
     nextBtn.disabled = false;
     nextBtn.textContent = "Continue";
 
     if (wmsResult.customer) {
-      lastValidatedRn = rnValue;
+      lastValidatedRn = validationKey;
       lastValidatedRnResult = wmsResult;
       rnLookupAttempts = 0;
       buildReview();
       showScreen(currentScreen + 1);
     } else {
       rnLookupAttempts++;
+      const tried = identifiers.join(", ");
       if (rnLookupAttempts >= 3) {
-        showActionError(`PO / RN / Load # not found after multiple attempts. ${FALLBACK_AFTER_MAX_ATTEMPTS}`);
+        showActionError(`Reference / PO / RN / Load was not found after multiple attempts. ${FALLBACK_AFTER_MAX_ATTEMPTS}`);
       } else {
-        showActionError(`PO / RN / Load # "${rnValue}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
+        showActionError(`Reference / PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
     }
     return;
@@ -364,7 +341,7 @@ function buildReview() {
 
 async function completeCheckin() {
   const data = getFormData();
-  const rnValue = data.referenceNo || data.loadNo || "";
+  const rnValue = getLoadIdentifiers(data)[0] || "";
 
   // Check if ET was already created in this session (prevent duplicates)
   const existingEt = sessionStorage.getItem("lastCreatedET");
@@ -376,7 +353,7 @@ async function completeCheckin() {
   }
 
   // Resolve customer from RN/load lookup (WMS primary, local fallback)
-  const wmsResult = await resolveCustomerFromRn(rnValue);
+  const wmsResult = await resolveCustomerFromIdentifiers(getLoadIdentifiers(data));
   const resolvedCustomer = wmsResult.customer || data.customer || "";
   const assignment = getDoorAssignment(resolvedCustomer);
 
@@ -410,9 +387,13 @@ async function completeCheckin() {
             sealNumber: ""
           },
           tripInfo: {
+            direction: wmsResult.type === "inbound" ? "inbound" : "outbound",
             customerId: wmsResult.customerId || "",
             loadId: wmsResult.loadId || "",
             loadNo: wmsResult.loadNo || "",
+            receiptId: wmsResult.receiptId || "",
+            poNo: wmsResult.poNo || "",
+            referenceNo: wmsResult.referenceNo || data.referenceNo || "",
             customer: resolvedCustomer
           }
         }),
@@ -484,27 +465,62 @@ async function completeCheckin() {
   return true;
 }
 
+function getLoadIdentifiers(data) {
+  return [...new Set([data.loadNo, data.referenceNo].map((value) => (value || "").trim()).filter(Boolean))];
+}
+
+async function resolveCustomerFromIdentifiers(identifiers) {
+  for (const identifier of identifiers) {
+    const result = await resolveCustomerFromRn(identifier);
+    if (result.customer) return { ...result, matchedIdentifier: identifier };
+  }
+  return { customer: "" };
+}
+
 async function resolveCustomerFromRn(rnValue) {
   if (!rnValue) return { customer: "" };
   const trimmed = rnValue.trim();
-  // Local fallback map for known RNs
-  if (rnToCustomerMap[trimmed]) return { customer: rnToCustomerMap[trimmed] };
-  // Try server-side WMS lookup
+  const local = rnToCustomerMap[trimmed.toUpperCase()] || rnToCustomerMap[trimmed];
+  if (local) return { ...local };
+
+  // Try outbound first.
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`/api/wms-lookup?rn=${encodeURIComponent(trimmed)}`, {
-      signal: controller.signal
-    });
+    const res = await fetch(`/api/wms-lookup?rn=${encodeURIComponent(trimmed)}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.customer) {
+        return {
+          type: data.type || "outbound",
+          customer: data.customer || "",
+          customerId: data.customerId || "",
+          loadId: data.loadId || "",
+          loadNo: data.loadNo || "",
+          customerCode: data.customerCode || ""
+        };
+      }
+    }
+  } catch {}
+
+  // Then try inbound receipt lookup by Receipt/RN, PO, BOL/reference, or container number.
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`/api/wms-inbound-lookup?keyword=${encodeURIComponent(trimmed)}`, { signal: controller.signal });
     clearTimeout(timeout);
     if (!res.ok) return { customer: "" };
     const data = await res.json();
+    if (!data.customer) return { customer: "" };
     return {
+      type: "inbound",
       customer: data.customer || "",
       customerId: data.customerId || "",
-      loadId: data.loadId || "",
-      loadNo: data.loadNo || "",
-      customerCode: data.customerCode || ""
+      customerCode: data.customerCode || "",
+      receiptId: data.receiptId || "",
+      poNo: data.poNo || "",
+      referenceNo: data.referenceNo || data.bolNo || data.containerNo || ""
     };
   } catch {
     return { customer: "" };
@@ -551,17 +567,17 @@ async function saveIdentityRecord(identityRecord) {
 
 function getDoorAssignment(customerValue) {
   const normalized = normalize(customerValue);
-  if (!normalized) return "Go to the door between docks 165 & 166";
-  if (doorBetweenCustomers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door between docks 165 & 166";
+  if (!normalized) return "Go to Dock 98";
+  if (dock98_97Customers.some((customer) => normalize(customer) === normalized)) {
+    return "Go to the door between docks 98 & 97";
   }
-  if (dock144Customers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door at dock 144";
+  if (dock75_74Customers.some((customer) => normalize(customer) === normalized)) {
+    return "Go to the door between docks 75 & 74";
   }
-  if (door45Customers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door  at Dock 45";
+  if (dock56_55Customers.some((customer) => normalize(customer) === normalized)) {
+    return "Go to the door between docks 56 & 55";
   }
-  return "Go to the door between docks 165 & 166";
+  return "Go to Dock 98";
 }
 
 function normalize(value = "") {

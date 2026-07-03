@@ -16,8 +16,9 @@ const WMS_USERNAME = process.env.WMS_USERNAME || "";
 const WMS_PASSWORD_B64 = process.env.WMS_PASSWORD_B64 || "";
 const WMS_PASSWORD_RAW = process.env.WMS_PASSWORD || "";
 const WMS_TENANT_ID = process.env.WMS_TENANT_ID || "LT";
-const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F1";
+const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F22";
 const YMS_BASE_URL = process.env.YMS_BASE_URL || "https://traffic.item.com/api/yms";
+const TIMEZONE = process.env.TIMEZONE || "America/Los_Angeles";
 
 function getWmsPassword() {
   if (WMS_PASSWORD_B64) return Buffer.from(WMS_PASSWORD_B64, "base64").toString("utf8");
@@ -192,7 +193,7 @@ function exchangeWmsForYms(wmsToken) {
         "X-Tenant-ID": WMS_TENANT_ID,
         "X-Yard-ID": WMS_FACILITY_ID,
         "x-facility-id": WMS_FACILITY_ID,
-        "Item-Time-Zone": "America/Los_Angeles",
+        "Item-Time-Zone": TIMEZONE,
         "Content-Type": "application/json",
         Accept: "application/json",
         "Content-Length": String(Buffer.byteLength(postBody))
@@ -235,7 +236,7 @@ function createYmsEntryTicket(ymsToken) {
         "X-Tenant-ID": WMS_TENANT_ID,
         "X-Yard-ID": WMS_FACILITY_ID,
         "x-facility-id": WMS_FACILITY_ID,
-        "Item-Time-Zone": "America/Los_Angeles",
+        "Item-Time-Zone": TIMEZONE,
         "x-channel": "WEB",
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -313,7 +314,7 @@ function attachBasicInfo(ymsToken, entryId, payload) {
         "X-Tenant-ID": WMS_TENANT_ID,
         "X-Yard-ID": WMS_FACILITY_ID,
         "x-facility-id": WMS_FACILITY_ID,
-        "Item-Time-Zone": "America/Los_Angeles",
+        "Item-Time-Zone": TIMEZONE,
         "x-channel": "WEB",
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -343,9 +344,20 @@ function attachBasicInfo(ymsToken, entryId, payload) {
 function attachTripInfo(ymsToken, entryId, tripInfo) {
   return new Promise((resolve, reject) => {
     const url = new URL(`${YMS_BASE_URL}/entry-ticket/trip-info-checkin`);
+    const isInbound = tripInfo.direction === "inbound" || tripInfo.receiptId || tripInfo.poNo;
     const loadIds = tripInfo.loadId ? [tripInfo.loadId] : (tripInfo.loadNo ? [tripInfo.loadNo] : []);
+    const receiptIds = tripInfo.receiptId ? [tripInfo.receiptId] : [];
 
-    const postBody = JSON.stringify({
+    const postBody = JSON.stringify(isInbound ? {
+      entryId,
+      inboundTripInfo: {
+        customerId: tripInfo.customerId || "",
+        receiptIds,
+        poNo: tripInfo.poNo || "",
+        referenceNo: tripInfo.referenceNo || "",
+        note: [tripInfo.receiptId, tripInfo.poNo, tripInfo.referenceNo].filter(Boolean).join(" / ")
+      }
+    } : {
       entryId,
       outboundTripInfo: {
         customerId: tripInfo.customerId || "",
@@ -361,7 +373,7 @@ function attachTripInfo(ymsToken, entryId, tripInfo) {
         "X-Tenant-ID": WMS_TENANT_ID,
         "X-Yard-ID": WMS_FACILITY_ID,
         "x-facility-id": WMS_FACILITY_ID,
-        "Item-Time-Zone": "America/Los_Angeles",
+        "Item-Time-Zone": TIMEZONE,
         "x-channel": "WEB",
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -447,6 +459,26 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/wms-inbound-lookup") {
+    const keyword = url.searchParams.get("keyword") || "";
+    if (!keyword) {
+      sendJson(res, { customer: "" });
+      return;
+    }
+    const bearerToken = await getWmsBearerToken();
+    if (!bearerToken) {
+      sendJson(res, { customer: "", error: "WMS credentials not configured" });
+      return;
+    }
+    try {
+      const wmsResult = await wmsInboundLookup(keyword, `Bearer ${bearerToken}`);
+      sendJson(res, wmsResult);
+    } catch (err) {
+      sendJson(res, { customer: "", error: "WMS inbound lookup failed" });
+    }
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket") {
     try {
       const body = await readBody(req);
@@ -476,7 +508,7 @@ const server = http.createServer(async (req, res) => {
 
       // Step 3: Attach trip/load info if WMS IDs available
       const tripInfo = payload.tripInfo || {};
-      if (tripInfo.loadId || tripInfo.customerId) {
+      if (tripInfo.loadId || tripInfo.customerId || tripInfo.receiptId || tripInfo.poNo) {
         try {
           await attachTripInfo(ymsToken, etNumber, tripInfo);
           tripInfoAttached = true;
@@ -618,6 +650,73 @@ function wmsLookup(rn, authHeader) {
     });
     req.on("timeout", () => {
       console.log(`[WMS lookup] RN=${rn} -> timeout`);
+      req.destroy();
+      resolve({ customer: "" });
+    });
+    req.write(postBody);
+    req.end();
+  });
+}
+
+
+function wmsInboundLookup(keyword, authHeader) {
+  return new Promise((resolve) => {
+    const lookupUrl = new URL(`${WMS_BASE_URL}/wms-bam/inbound/receipt/search-by-paging`);
+    const postBody = JSON.stringify({ pageNo: 1, pageSize: 10, keyword });
+    const mod = lookupUrl.protocol === "https:" ? https : http;
+    const req = mod.request(lookupUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "x-tenant-id": WMS_TENANT_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": Buffer.byteLength(postBody)
+      },
+      timeout: 5000
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          const raw = parsed?.data?.list || parsed?.data?.records || parsed?.data || [];
+          const rows = Array.isArray(raw) ? raw : [];
+          const normalizedKeyword = String(keyword || "").trim().toUpperCase();
+          const match = rows.find((row) => {
+            const candidates = [row.id, row.receiptId, row.receiptNo, row.rn, row.poNo, row.bolNo, row.referenceNo, row.containerNo]
+              .map((v) => String(v || "").trim().toUpperCase());
+            return candidates.includes(normalizedKeyword);
+          }) || rows[0];
+          if (match && (match.customerName || match.customerId)) {
+            resolve({
+              type: "inbound",
+              customer: match.customerName || match.customer || "",
+              customerCode: match.customerCode || "",
+              customerId: match.customerId || "",
+              receiptId: match.id || match.receiptId || match.receiptNo || match.rn || "",
+              poNo: match.poNo || "",
+              bolNo: match.bolNo || "",
+              referenceNo: match.referenceNo || match.bolNo || match.containerNo || "",
+              containerNo: match.containerNo || "",
+              status: match.status || ""
+            });
+          } else {
+            resolve({ customer: "" });
+          }
+        } catch (err) {
+          console.log(`[WMS inbound] keyword=${keyword} -> parse error: ${err.message}`);
+          resolve({ customer: "" });
+        }
+      });
+    });
+    req.on("error", (err) => {
+      console.log(`[WMS inbound] keyword=${keyword} -> network error: ${err.message}`);
+      resolve({ customer: "" });
+    });
+    req.on("timeout", () => {
+      console.log(`[WMS inbound] keyword=${keyword} -> timeout`);
       req.destroy();
       resolve({ customer: "" });
     });

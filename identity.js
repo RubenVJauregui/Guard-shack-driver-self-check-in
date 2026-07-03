@@ -38,10 +38,12 @@ function renderIdentity() {
 
   const driverName = `${identityData.firstName || ""} ${identityData.lastName || ""}`.trim() || "Driver";
   meta.innerHTML = [
+    ["ET#", identityData.etNumber || "Pending"],
+    ["RN / Load", identityData.rnNumber || "Not provided"],
     ["Driver", driverName],
     ["License", identityData.license || "Not entered"],
     ["Customer", identityData.customer || "Not entered"],
-    ["Door", identityData.assignment || "Not assigned"]
+    ["Door Assignment", identityData.assignment || "Not assigned"]
   ]
     .map(([label, value]) => `<div class="review-row"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div>`)
     .join("");
