@@ -5,6 +5,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const os = require("node:os");
 const nodemailer = require("nodemailer");
+const db = require("./db");
 
 const root = __dirname;
 const dataDir = path.join(root, "identity-records");
@@ -478,6 +479,7 @@ function attachTripInfo(ymsToken, entryId, tripInfo) {
 }
 
 fs.mkdirSync(dataDir, { recursive: true });
+db.initDb().catch((err) => console.log(`[DB] init failed: ${err.message}`));
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -555,6 +557,40 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, wmsResult);
     } catch (err) {
       sendJson(res, { customer: "", error: "WMS inbound lookup failed" });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/checkins") {
+    const result = await db.queryCheckins(Object.fromEntries(url.searchParams.entries()));
+    sendJson(res, result);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/checkins/summary") {
+    const summary = await db.getSummary();
+    sendJson(res, summary);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/checkins/export") {
+    const result = await db.queryCheckins({ ...Object.fromEntries(url.searchParams.entries()), page: 1, limit: 10000 });
+    const headers = ["created_at","et_number","driver_name","driver_phone","driver_license","driver_email","carrier_name","usdot","vehicle_type","license_plate","equipment_type","equipment_no","entry_task","load_type_group","direction","reference_no","load_no","receipt_id","po_no","customer","door_assignment","comments","identity_url"];
+    const csv = [headers.join(",")].concat(result.data.map((row) => headers.map((h) => csvCell(row[h])).join(","))).join("\n");
+    res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=lincoln-driver-checkins.csv" });
+    res.end(csv);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/checkins") {
+    try {
+      const body = await readBody(req);
+      const record = JSON.parse(body || "{}");
+      const id = await db.insertCheckin(record);
+      sendJson(res, { saved: Boolean(id), id });
+    } catch (err) {
+      console.log(`[DB] checkin save endpoint error: ${err.message}`);
+      sendJson(res, { saved: false });
     }
     return;
   }
@@ -668,6 +704,11 @@ function readBody(req) {
 function sendJson(res, data, status = 200) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(data));
+}
+
+function csvCell(value) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function getPublicOrigin(req) {

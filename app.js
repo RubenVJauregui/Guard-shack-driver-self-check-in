@@ -437,6 +437,52 @@ async function completeCheckin() {
 
   const identityUrl = await saveIdentityRecord(identityRecord);
 
+  try {
+    await fetch("/api/checkins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        etNumber,
+        driverFirstName: data.firstName || "",
+        driverLastName: data.lastName || "",
+        driverName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+        driverPhone: data.driverPhone || data.phone || "",
+        driverLicense: data.license || "",
+        driverEmail: data.email || "",
+        carrierName: data.carrierName || "",
+        usdot: data.usdot || "",
+        vehicleType: data.vehicleType || "",
+        licensePlate: data.plate || "",
+        equipmentType: data.equipmentType || "",
+        equipmentNo: data.equipmentNo || "",
+        entryTask: data.entryTask || "",
+        referenceNo: data.referenceNo || "",
+        loadNo: data.loadNo || "",
+        comments: data.comments || "",
+        customer: resolvedCustomer,
+        customerId: wmsResult.customerId || "",
+        customerCode: wmsResult.customerCode || "",
+        direction: wmsResult.type === "inbound" ? "inbound" : "outbound",
+        receiptId: wmsResult.receiptId || "",
+        poNo: wmsResult.poNo || "",
+        loadId: wmsResult.loadId || "",
+        wmsLoadNo: wmsResult.loadNo || "",
+        doorAssignment: assignment,
+        hasDriverPhoto: Boolean(form.elements.driverPhoto?.files?.length),
+        hasEquipmentPhoto: Boolean(form.elements.equipmentPhoto?.files?.length),
+        hasLoadPhoto: Boolean(form.elements.loadPhoto?.files?.length),
+        photoCount: (form.elements.driverPhoto?.files?.length || 0) + (form.elements.equipmentPhoto?.files?.length || 0) + (form.elements.loadPhoto?.files?.length || 0),
+        identityUrl,
+        basicInfoAttached: Boolean(etStatus.basicInfoAttached),
+        tripInfoAttached: Boolean(etStatus.tripInfoAttached),
+        emailNotificationSent: Boolean(etStatus.emailNotificationSent),
+        raw: { etStatus }
+      })
+    });
+  } catch {
+    // Dashboard storage should never block driver check-in.
+  }
+
   // Drop Off Empty: show ET, drop-off message, hide QR
   if (isDropOffEmpty()) {
     doorInstruction.textContent = "Please drop off the container and see the employee for further instructions.";

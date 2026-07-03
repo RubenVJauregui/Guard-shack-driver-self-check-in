@@ -114,3 +114,17 @@ Required production email settings:
 - `SMTP_FROM`
 
 The check-in response includes `emailNotificationSent` for operational verification.
+
+## Driver Check-Ins Dashboard
+
+Shareable dashboard link after deployment:
+`/dashboard.html`
+
+The dashboard stores successful check-ins in PostgreSQL when `DATABASE_URL` is configured. It supports:
+- Historical submissions
+- Date range, carrier, driver, trailer/container, inbound/outbound, load type, and general search filters
+- Full record detail review
+- CSV export
+
+Required database environment variable:
+- `DATABASE_URL`
