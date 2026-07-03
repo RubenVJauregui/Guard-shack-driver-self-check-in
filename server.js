@@ -24,6 +24,17 @@ function getWmsPassword() {
   return WMS_PASSWORD_RAW;
 }
 
+function getUserIdFromJwt(token) {
+  try {
+    const parts = String(token || "").split(".");
+    if (parts.length < 2) return "";
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+    return payload.userId || payload.user_id || payload.uid || payload.sub || payload.id || "";
+  } catch (_err) {
+    return "";
+  }
+}
+
 let cachedWmsToken = "";
 let cachedWmsTokenExpiry = 0;
 let cachedWmsUserId = "";
@@ -33,6 +44,7 @@ let cachedYmsTokenExpiry = 0;
 async function getWmsBearerToken() {
   if (WMS_AUTH_TOKEN) {
     console.log("[WMS auth] Using static WMS_AUTH_TOKEN");
+    cachedWmsUserId = cachedWmsUserId || getUserIdFromJwt(WMS_AUTH_TOKEN);
     return WMS_AUTH_TOKEN;
   }
   const password = getWmsPassword();
@@ -82,7 +94,7 @@ function wmsPasswordLogin(username, password) {
         try {
           const parsed = JSON.parse(body);
           const token = parsed?.data?.accessToken || parsed?.data?.access_token || parsed?.accessToken || parsed?.access_token || parsed?.token || "";
-          const userId = parsed?.data?.userId || parsed?.data?.user_id || parsed?.userId || "";
+          const userId = parsed?.data?.userId || parsed?.data?.user_id || parsed?.data?.id || parsed?.data?.user?.userId || parsed?.data?.user?.id || parsed?.userId || parsed?.id || getUserIdFromJwt(token) || "";
           if (token) {
             if (userId) cachedWmsUserId = userId;
             resolve(token);
