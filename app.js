@@ -121,6 +121,12 @@ document.querySelector("#loginMode").addEventListener("change", (event) => {
   document.querySelector(".login-alt").style.display = apptMode ? "grid" : "none";
 });
 
+// After 3 failed PO/RN/Load lookups, show this message (from Excel B1)
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
+let rnLookupAttempts = 0;
+let lastValidatedRn = "";
+let lastValidatedRnResult = null;
+
 nextBtn.addEventListener("click", async () => {
   if (currentScreen === 4) {
     if (!validateScreen()) return;
@@ -143,8 +149,51 @@ nextBtn.addEventListener("click", async () => {
     return;
   }
 
+  // Step 3: validate PO/RN/Load # against WMS before proceeding
+  if (currentScreen === 3) {
+    if (!validateScreen()) return;
+    const data = getFormData();
+    const rnValue = (data.referenceNo || data.loadNo || "").trim();
+
+    if (!rnValue) {
+      showActionError("Please enter a PO / RN / Load # before continuing.");
+      return;
+    }
+
+    // Skip re-lookup if same value already validated
+    if (rnValue === lastValidatedRn && lastValidatedRnResult && lastValidatedRnResult.customer) {
+      buildReview();
+      showScreen(currentScreen + 1);
+      return;
+    }
+
+    nextBtn.disabled = true;
+    nextBtn.textContent = "Verifying...";
+    clearActionError();
+
+    const wmsResult = await resolveCustomerFromRn(rnValue);
+
+    nextBtn.disabled = false;
+    nextBtn.textContent = "Continue";
+
+    if (wmsResult.customer) {
+      lastValidatedRn = rnValue;
+      lastValidatedRnResult = wmsResult;
+      rnLookupAttempts = 0;
+      buildReview();
+      showScreen(currentScreen + 1);
+    } else {
+      rnLookupAttempts++;
+      if (rnLookupAttempts >= 3) {
+        showActionError(`PO / RN / Load # not found after multiple attempts. ${FALLBACK_AFTER_MAX_ATTEMPTS}`);
+      } else {
+        showActionError(`PO / RN / Load # "${rnValue}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
+      }
+    }
+    return;
+  }
+
   if (!validateScreen()) return;
-  if (currentScreen === 3) buildReview();
   showScreen(currentScreen + 1);
 });
 
