@@ -126,13 +126,20 @@ nextBtn.addEventListener("click", async () => {
     if (!validateScreen()) return;
     nextBtn.disabled = true;
     nextBtn.textContent = "Submitting...";
+    clearActionError();
+    let success = false;
     try {
-      await completeCheckin();
+      success = await completeCheckin();
     } catch {
-      // proceed to completion screen regardless
+      success = false;
     }
     nextBtn.disabled = false;
-    showScreen(5);
+    if (success) {
+      showScreen(5);
+    } else {
+      nextBtn.textContent = "Complete";
+      showActionError("Entry Ticket could not be created. Please see the guard shack for assistance.");
+    }
     return;
   }
 
@@ -353,8 +360,13 @@ async function completeCheckin() {
         }
       }
     } catch {
-      // ET creation failed — non-blocking, fallback text shown
+      // ET creation failed
     }
+  }
+
+  // Block completion if no confirmed ET
+  if (!etNumber) {
+    return false;
   }
 
   // Strip large photo from identity payload to prevent request hang/failure
@@ -378,11 +390,12 @@ async function completeCheckin() {
   doorInstruction.textContent = assignment;
   identityQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&data=${encodeURIComponent(identityUrl)}`;
   identityQrLink.href = identityUrl;
-  etNumberEl.textContent = etNumber ? `ET# ${etNumber}` : "ET number will be assigned by the employee";
+  etNumberEl.textContent = `ET# ${etNumber}`;
   rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
   completionDetails.textContent = `${data.firstName || "Driver"}, your ${data.entryTask || "check-in"} has been recorded.`;
   localStorage.setItem("driverCheckinDraft", JSON.stringify(data));
   localStorage.setItem("driverIdentityData", JSON.stringify(identityRecord));
+  return true;
 }
 
 async function resolveCustomerFromRn(rnValue) {
