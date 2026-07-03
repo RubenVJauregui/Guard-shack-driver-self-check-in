@@ -94,3 +94,23 @@ Confirmed Lincoln inbound example:
 - BOL/reference/container: `0080804544`
 - Customer: `ALL MARKET INC / VITA COCO`
 - Door assignment: `Go to the door between docks 98 & 97`
+
+## Email Notifications on Driver Check-In
+
+After a successful ET is created, the app sends an email notification to the alert recipients when SMTP is configured in production.
+
+Default recipients:
+- Juan.barragan@unisco.com
+- Ryan.Morales@unisco.com
+- Angela.bryant@unisco.com
+- opsteam.lincoln@unisco.com
+
+Required production email settings:
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_SECURE`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM`
+
+The check-in response includes `emailNotificationSent` for operational verification.

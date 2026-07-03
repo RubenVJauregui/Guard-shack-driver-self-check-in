@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const os = require("node:os");
+const nodemailer = require("nodemailer");
 
 const root = __dirname;
 const dataDir = path.join(root, "identity-records");
@@ -19,6 +20,82 @@ const WMS_TENANT_ID = process.env.WMS_TENANT_ID || "LT";
 const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F22";
 const YMS_BASE_URL = process.env.YMS_BASE_URL || "https://traffic.item.com/api/yms";
 const TIMEZONE = process.env.TIMEZONE || "America/Los_Angeles";
+const OPERATOR_NOTIFICATION_RECIPIENT = process.env.OPERATOR_NOTIFICATION_RECIPIENT || "Juan.barragan@unisco.com";
+const ALERT_RECIPIENTS = (process.env.ALERT_RECIPIENTS || "Juan.barragan@unisco.com,Ryan.Morales@unisco.com,Angela.bryant@unisco.com,opsteam.lincoln@unisco.com")
+  .split(",")
+  .map((email) => email.trim())
+  .filter(Boolean);
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
+const SMTP_USER = process.env.SMTP_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || "";
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Lincoln Driver Check-In <no-reply@unisco.com>";
+
+function isEmailEnabled() {
+  return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && ALERT_RECIPIENTS.length);
+}
+
+function formatNotificationLines(etNumber, payload) {
+  const driver = payload.driverInfo || {};
+  const carrier = payload.carrierInfo || {};
+  const vehicle = payload.vehicleInfo || {};
+  const equipment = payload.equipmentInfo || {};
+  const trip = payload.tripInfo || {};
+  return [
+    `A driver has completed check-in at Lincoln (LT_F22).`,
+    ``,
+    `ET#: ${etNumber || ""}`,
+    `Type: ${trip.direction === "inbound" ? "Inbound receipt" : "Outbound / yard task"}`,
+    `Customer: ${trip.customer || ""}`,
+    `Receipt/RN: ${trip.receiptId || ""}`,
+    `PO: ${trip.poNo || ""}`,
+    `Load: ${trip.loadNo || trip.loadId || ""}`,
+    `Reference: ${trip.referenceNo || ""}`,
+    ``,
+    `Driver: ${driver.driverName || [driver.firstName, driver.lastName].filter(Boolean).join(" ")}`,
+    `Phone: ${driver.driverPhone || ""}`,
+    `License: ${driver.licenseNumber || ""}`,
+    `Carrier: ${carrier.carrierName || ""}`,
+    `USDOT/MC: ${carrier.usdotNumber || carrier.mcNumber || ""}`,
+    `Vehicle plate: ${vehicle.licensePlate || ""}`,
+    `Equipment: ${equipment.equipmentNo || ""} ${equipment.equipmentType || ""}`.trim(),
+    `Time: ${new Date().toLocaleString("en-US", { timeZone: TIMEZONE })} ${TIMEZONE}`
+  ];
+}
+
+async function sendCheckinEmailNotification(etNumber, payload) {
+  if (!isEmailEnabled()) {
+    console.log("[Email notification] SMTP not configured; email not sent.");
+    return { sent: false, reason: "smtp_not_configured" };
+  }
+  const trip = payload.tripInfo || {};
+  const subjectParts = ["Lincoln Driver Check-In", etNumber];
+  if (trip.receiptId || trip.poNo || trip.loadNo) subjectParts.push(trip.receiptId || trip.poNo || trip.loadNo);
+  const subject = subjectParts.filter(Boolean).join(" - ");
+  const text = formatNotificationLines(etNumber, payload).join("\\n");
+  const html = `<pre style="font-family:Arial, sans-serif; white-space:pre-wrap; line-height:1.45;">${escapeHtmlServer(text)}</pre>`;
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: { user: SMTP_USER, pass: SMTP_PASS }
+  });
+  const info = await transporter.sendMail({
+    from: SMTP_FROM,
+    to: ALERT_RECIPIENTS,
+    subject,
+    text,
+    html
+  });
+  console.log(`[Email notification] Sent check-in email for ${etNumber} to ${ALERT_RECIPIENTS.join(", ")} messageId=${info.messageId || ""}`);
+  return { sent: true, messageId: info.messageId || "" };
+}
+
+function escapeHtmlServer(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+}
+
 
 function getWmsPassword() {
   if (WMS_PASSWORD_B64) return Buffer.from(WMS_PASSWORD_B64, "base64").toString("utf8");
@@ -434,7 +511,10 @@ const server = http.createServer(async (req, res) => {
       hasPassword: Boolean(password),
       tenant: WMS_TENANT_ID,
       facility: WMS_FACILITY_ID,
-      cachedTokenActive: Boolean(cachedWmsToken && Date.now() < cachedWmsTokenExpiry)
+      cachedTokenActive: Boolean(cachedWmsToken && Date.now() < cachedWmsTokenExpiry),
+      emailNotificationsEnabled: isEmailEnabled(),
+      alertRecipients: ALERT_RECIPIENTS,
+      operatorNotificationRecipient: OPERATOR_NOTIFICATION_RECIPIENT
     });
     return;
   }
@@ -518,7 +598,15 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      sendJson(res, { etNumber, basicInfoAttached, tripInfoAttached });
+      let emailNotification = { sent: false };
+      try {
+        emailNotification = await sendCheckinEmailNotification(etNumber, payload);
+      } catch (err) {
+        emailNotification = { sent: false, reason: "send_failed" };
+        console.log(`[Email notification] Failed for ${etNumber}: ${err.message}`);
+      }
+
+      sendJson(res, { etNumber, basicInfoAttached, tripInfoAttached, emailNotificationSent: Boolean(emailNotification.sent) });
     } catch (err) {
       console.log(`[YMS ET] endpoint error: ${err.message}`);
       sendJson(res, { etNumber: "", error: "ET creation failed" });

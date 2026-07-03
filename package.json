@@ -6,5 +6,7 @@
     "start": "node server.js",
     "generate-qr": "node generate-qr.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  }
 }
