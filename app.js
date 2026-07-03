@@ -144,7 +144,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showActionError("Entry Ticket could not be created. Please see the guard shack for assistance.");
+      showActionError("Go to the door between docks 165 & 166 and see the employee");
     }
     return;
   }
