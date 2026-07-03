@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Driver Portal Duplicate</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app" class="shell">
+      <section class="phone-frame">
+        <header class="topbar">
+          <button class="icon-button" id="backBtn" type="button" aria-label="Back">‹</button>
+          <div>
+            <p class="eyebrow">ITEM</p>
+            <h1 id="screenTitle">Driver Portal</h1>
+          </div>
+          <div class="language-menu">
+            <button class="language-button" id="languageBtn" type="button" aria-expanded="false">English</button>
+            <div class="language-options" id="languageOptions" hidden>
+              <button type="button" data-language="English">English</button>
+              <button type="button" data-language="Spanish">Spanish</button>
+              <button type="button" data-language="Chinese">Chinese</button>
+              <button type="button" data-language="Hindi">Hindi</button>
+              <button type="button" data-language="Punjabi">Punjabi</button>
+              <button type="button" data-language="Arabic">Arabic</button>
+              <button type="button" data-language="Russian">Russian</button>
+              <button type="button" data-language="Ukrainian">Ukrainian</button>
+              <button type="button" data-language="Japanese">Japanese</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="progress" aria-label="Check-in progress">
+          <span class="progress-dot active"></span>
+          <span class="progress-dot"></span>
+          <span class="progress-dot"></span>
+          <span class="progress-dot"></span>
+          <span class="progress-dot"></span>
+        </div>
+
+        <form id="checkinForm" novalidate>
+          <section class="screen active" data-screen="0">
+            <div class="brand-lockup">
+              <div class="logo">item</div>
+              <p>Driver Portal</p>
+            </div>
+            <label>
+              Login by
+              <select id="loginMode" name="loginMode">
+                <option>Phone Number</option>
+                <option>APPT and Passcode</option>
+              </select>
+            </label>
+            <div class="two-col phone-row">
+              <label>
+                Code
+                <input name="countryCode" value="+1" inputmode="tel" />
+              </label>
+              <label>
+                Enter Your Phone Number
+                <input name="phone" required inputmode="tel" placeholder="5551234567" />
+              </label>
+            </div>
+            <div class="two-col login-alt">
+              <label>
+                Appointment Number
+                <input name="appointment" placeholder="PE / APPT #" />
+              </label>
+              <label>
+                Passcode
+                <input name="passcode" placeholder="Passcode" />
+              </label>
+            </div>
+          </section>
+
+          <section class="screen" data-screen="1">
+            <div class="section-title">
+              <p>Step 1</p>
+              <h2>Driver Information</h2>
+            </div>
+            <div class="two-col">
+              <label>First Name<input name="firstName" required /></label>
+              <label>Last Name<input name="lastName" required /></label>
+            </div>
+            <label>Driver Phone Number<input name="driverPhone" inputmode="tel" /></label>
+            <label>Driver License Number<input name="license" required /></label>
+            <label>Email Address<input name="email" type="email" /></label>
+            <label>
+              Driver License Picture *
+              <input name="driverPhoto" type="file" accept="image/*" capture="environment" required />
+            </label>
+            <p class="field-error" id="driverPhotoError" hidden>Please upload a picture of your driver license before continuing.</p>
+            <div class="preview-grid" id="driverPreview"></div>
+          </section>
+
+          <section class="screen" data-screen="2">
+            <div class="section-title">
+              <p>Step 2</p>
+              <h2>Carrier and Vehicle Information</h2>
+            </div>
+            <div class="two-col">
+              <label>Carrier Name<input name="carrierName" required /></label>
+              <label>USDOT / MC Number<input name="usdot" /></label>
+            </div>
+            <div class="two-col">
+              <label>
+                Vehicle Type
+                <select name="vehicleType">
+                  <option>Tractor</option>
+                  <option>Box Truck</option>
+                  <option>Car</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label>License Plate Number<input name="plate" required /></label>
+            </div>
+            <div class="two-col">
+              <label>
+                Equipment Type
+                <select name="equipmentType">
+                  <option>Trailer</option>
+                  <option>Container</option>
+                  <option>Chassis</option>
+                  <option>Flatbed</option>
+                  <option>No Equipment</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label>Container / Trailer Number<input name="equipmentNo" required /></label>
+            </div>
+            <label>
+              Vehicle / Equipment Picture
+              <input name="equipmentPhoto" type="file" accept="image/*" capture="environment" />
+            </label>
+            <div class="preview-grid" id="equipmentPreview"></div>
+          </section>
+
+          <section class="screen" data-screen="3">
+            <div class="section-title">
+              <p>Step 3</p>
+              <h2>Entry Task and Load Details</h2>
+            </div>
+            <label>
+              Choose your entry task
+              <select name="entryTask">
+                <option>Live Offload</option>
+                <option>Drop Off Full</option>
+                <option>Drop Off Empty</option>
+                <option>Live Load</option>
+                <option>Pick up Preload</option>
+                <option>Pickup Empty</option>
+              </select>
+            </label>
+            <div class="two-col">
+              <label>Reference #<input name="referenceNo" /></label>
+              <label>PO / RN / Load #<input name="loadNo" /></label>
+            </div>
+            <label>Comments<textarea name="comments" rows="4" placeholder="Anything the guard or warehouse team should know"></textarea></label>
+            <label>
+              BOL / Load / Seal Picture
+              <input name="loadPhoto" type="file" accept="image/*" capture="environment" multiple />
+            </label>
+            <div class="preview-grid" id="loadPreview"></div>
+          </section>
+
+          <section class="screen" data-screen="4">
+            <div class="section-title">
+              <p>Step 4</p>
+              <h2>Please verify your information</h2>
+            </div>
+            <div id="review" class="review"></div>
+            <label class="checkbox">
+              <input name="privacy" type="checkbox" required />
+              <span>I confirm this information is correct and the attached pictures are ready to submit.</span>
+            </label>
+            <p class="field-error" id="privacyError" hidden>Please check the box to confirm your information before completing.</p>
+          </section>
+
+          <section class="screen complete-screen" data-screen="5">
+            <div class="success-mark">✓</div>
+            <p class="eyebrow">Complete Check-in</p>
+            <h2>Check in complete</h2>
+            <div class="instruction-card">
+              <p class="instruction-label">Please go to</p>
+              <p id="doorInstruction" class="door-instruction">Door assignment will appear here.</p>
+            </div>
+            <p class="qr-help">Please show this QR code to the warehouse employee</p>
+            <a id="identityQrLink" class="qr-link" href="./identity.html" target="_blank" rel="noopener">
+              <img id="identityQr" class="identity-qr" alt="Driver identity QR code" />
+            </a>
+            <p id="etNumber" class="et-number"></p>
+            <p id="rnNumber" class="et-number"></p>
+            <p id="completionDetails" class="muted"></p>
+            <button class="secondary" type="button" id="startOverBtn">Start Over</button>
+          </section>
+        </form>
+
+        <footer class="actions">
+          <p class="field-error action-error" id="actionError" hidden></p>
+          <button class="secondary" id="saveDraftBtn" type="button">Save Draft</button>
+          <button id="nextBtn" type="button">Continue</button>
+        </footer>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

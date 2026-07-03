@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Driver Identity</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="phone-frame identity-frame">
+        <header class="topbar">
+          <div></div>
+          <div>
+            <p class="eyebrow">ITEM</p>
+            <h1>Driver Identity</h1>
+          </div>
+          <button class="language-button" type="button">English</button>
+        </header>
+
+        <section class="identity-screen">
+          <p class="eyebrow">Identity Verification</p>
+          <h2>Driver License Picture</h2>
+          <div class="license-photo-wrap">
+            <img id="licensePhoto" class="license-photo" alt="Driver license uploaded during check-in" />
+            <p id="missingPhoto" class="muted" hidden>No driver license picture was uploaded.</p>
+          </div>
+          <div id="identityMeta" class="identity-meta"></div>
+          <button id="identityConfirmedBtn" type="button">Identity Confirmed</button>
+          <p id="confirmedMessage" class="confirmed-message" hidden>Identity confirmed.</p>
+        </section>
+      </section>
+    </main>
+
+    <script src="./identity.js"></script>
+  </body>
+</html>
