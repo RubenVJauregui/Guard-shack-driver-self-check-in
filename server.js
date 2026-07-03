@@ -74,7 +74,7 @@ async function sendCheckinEmailNotification(etNumber, payload) {
   const subjectParts = ["Lincoln Driver Check-In", etNumber];
   if (trip.receiptId || trip.poNo || trip.loadNo) subjectParts.push(trip.receiptId || trip.poNo || trip.loadNo);
   const subject = subjectParts.filter(Boolean).join(" - ");
-  const text = formatNotificationLines(etNumber, payload).join("\\n");
+  const text = formatNotificationLines(etNumber, payload).join("\n");
   const html = `<pre style="font-family:Arial, sans-serif; white-space:pre-wrap; line-height:1.45;">${escapeHtmlServer(text)}</pre>`;
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
@@ -95,6 +95,78 @@ async function sendCheckinEmailNotification(etNumber, payload) {
 
 function escapeHtmlServer(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+}
+
+
+function pickupSummaryFromRecord(record = {}) {
+  const type = record.direction === "inbound" ? "inbound receipt" : "outbound / yard move";
+  const task = record.entryTask || record.entry_task || "check-in";
+  const customer = record.customer ? ` for ${record.customer}` : "";
+  const equipment = record.equipmentNo || record.equipment_no ? ` Equipment: ${record.equipmentNo || record.equipment_no}.` : "";
+  const refs = [
+    record.receiptId || record.receipt_id ? `Receipt/RN ${record.receiptId || record.receipt_id}` : "",
+    record.poNo || record.po_no ? `PO ${record.poNo || record.po_no}` : "",
+    record.loadNo || record.load_no ? `Load ${record.loadNo || record.load_no}` : "",
+    record.referenceNo || record.reference_no ? `Reference ${record.referenceNo || record.reference_no}` : ""
+  ].filter(Boolean).join(" / ");
+  return `${task} ${type}${customer}.${refs ? ` ${refs}.` : ""}${equipment}`;
+}
+
+async function sendStoredCheckinEmailNotification(record = {}) {
+  if (!isEmailEnabled()) {
+    console.log("[Email notification] SMTP not configured; stored check-in email not sent.");
+    return { sent: false, reason: "smtp_not_configured" };
+  }
+
+  const checkinLink = record.identityUrl || record.identity_url || process.env.COOLIFY_URL || "https://driver-checkin-4178-49c078.coolify.item.pub";
+  const dashboardLink = `${process.env.COOLIFY_URL || "https://driver-checkin-4178-49c078.coolify.item.pub"}/dashboard.html`;
+  const doorAssignment = record.doorAssignment || record.door_assignment || "Door assignment not available";
+  const summary = pickupSummaryFromRecord(record);
+  const driverName = record.driverName || record.driver_name || [record.driverFirstName, record.driverLastName].filter(Boolean).join(" ");
+  const etNumber = record.etNumber || record.et_number || "";
+  const subject = ["Lincoln Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
+  const lines = [
+    "A driver has completed check-in at Lincoln (LT_F22).",
+    "",
+    `Check-in link: ${checkinLink}`,
+    `Dashboard: ${dashboardLink}`,
+    `Dock door assignment: ${doorAssignment}`,
+    "",
+    `Pickup summary: ${summary}`,
+    "",
+    `ET#: ${etNumber}`,
+    `Driver: ${driverName}`,
+    `Phone: ${record.driverPhone || record.driver_phone || ""}`,
+    `Carrier: ${record.carrierName || record.carrier_name || ""}`,
+    `Trailer / container: ${record.equipmentNo || record.equipment_no || ""}`,
+    `Entry task: ${record.entryTask || record.entry_task || ""}`,
+    `Direction: ${record.direction || ""}`,
+    `Customer: ${record.customer || ""}`,
+    `Receipt/RN: ${record.receiptId || record.receipt_id || ""}`,
+    `PO: ${record.poNo || record.po_no || ""}`,
+    `Load: ${record.loadNo || record.load_no || record.wmsLoadNo || record.wms_load_no || ""}`,
+    `Reference: ${record.referenceNo || record.reference_no || ""}`,
+    `Comments: ${record.comments || ""}`,
+    `Time: ${new Date().toLocaleString("en-US", { timeZone: TIMEZONE })} ${TIMEZONE}`
+  ];
+  const text = lines.join("\n");
+  const html = `<div style="font-family:Arial,sans-serif;line-height:1.45;color:#111">
+    <h2 style="margin:0 0 12px">Lincoln Driver Check-In</h2>
+    <p><strong>Check-in link:</strong> <a href="${escapeHtmlServer(checkinLink)}">${escapeHtmlServer(checkinLink)}</a></p>
+    <p><strong>Dock door assignment:</strong> ${escapeHtmlServer(doorAssignment)}</p>
+    <p><strong>Pickup summary:</strong> ${escapeHtmlServer(summary)}</p>
+    <hr />
+    <pre style="white-space:pre-wrap;font-family:Arial,sans-serif">${escapeHtmlServer(text)}</pre>
+  </div>`;
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: { user: SMTP_USER, pass: SMTP_PASS }
+  });
+  const info = await transporter.sendMail({ from: SMTP_FROM, to: ALERT_RECIPIENTS, subject, text, html });
+  console.log(`[Email notification] Sent stored check-in email for ${etNumber || "unknown ET"} to ${ALERT_RECIPIENTS.join(", ")} messageId=${info.messageId || ""}`);
+  return { sent: true, messageId: info.messageId || "" };
 }
 
 
@@ -586,8 +658,16 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readBody(req);
       const record = JSON.parse(body || "{}");
+      let emailNotification = { sent: false };
+      try {
+        emailNotification = await sendStoredCheckinEmailNotification(record);
+        record.emailNotificationSent = Boolean(emailNotification.sent);
+      } catch (err) {
+        record.emailNotificationSent = false;
+        console.log(`[Email notification] Stored check-in email failed: ${err.message}`);
+      }
       const id = await db.insertCheckin(record);
-      sendJson(res, { saved: Boolean(id), id });
+      sendJson(res, { saved: Boolean(id), id, emailNotificationSent: Boolean(emailNotification.sent) });
     } catch (err) {
       console.log(`[DB] checkin save endpoint error: ${err.message}`);
       sendJson(res, { saved: false });
@@ -634,15 +714,9 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      let emailNotification = { sent: false };
-      try {
-        emailNotification = await sendCheckinEmailNotification(etNumber, payload);
-      } catch (err) {
-        emailNotification = { sent: false, reason: "send_failed" };
-        console.log(`[Email notification] Failed for ${etNumber}: ${err.message}`);
-      }
-
-      sendJson(res, { etNumber, basicInfoAttached, tripInfoAttached, emailNotificationSent: Boolean(emailNotification.sent) });
+      // Notification email is sent after the browser saves the complete dashboard record,
+      // because that record includes the check-in link and dock door assignment.
+      sendJson(res, { etNumber, basicInfoAttached, tripInfoAttached, emailNotificationSent: false });
     } catch (err) {
       console.log(`[YMS ET] endpoint error: ${err.message}`);
       sendJson(res, { etNumber: "", error: "ET creation failed" });
