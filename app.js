@@ -265,8 +265,8 @@ if (preCheckinSearchBtn) {
       const data = await res.json();
 
       if (data.found && data.customer) {
-        const assignment = getDoorAssignment(data.customer);
-        doorInstruction.textContent = assignment;
+        const doorResult = await getDoorAssignmentWithStaging(data.loadId || "", data.customer);
+        doorInstruction.textContent = doorResult.assignment;
         etNumberEl.textContent = `ET# ${data.etNumber || ticket}`;
         rnNumberEl.textContent = data.loadNo ? `RN# ${data.loadNo}` : "RN# Not provided";
         identityQr.style.display = "none";
@@ -433,7 +433,8 @@ async function completeCheckin() {
   // Resolve customer from RN/load lookup (WMS primary, local fallback)
   const wmsResult = await resolveCustomerFromIdentifiers(getLoadIdentifiers(data));
   const resolvedCustomer = wmsResult.customer || data.customer || "";
-  const assignment = getDoorAssignment(resolvedCustomer);
+  const doorResult = await getDoorAssignmentWithStaging(wmsResult.loadId || "", resolvedCustomer);
+  const assignment = doorResult.assignment;
 
   // Create real YMS ET with driver data attached if not already created
   if (!etNumber) {
@@ -546,6 +547,8 @@ async function completeCheckin() {
         loadId: wmsResult.loadId || "",
         wmsLoadNo: wmsResult.loadNo || "",
         doorAssignment: assignment,
+        doorSource: doorResult.source || "",
+        stagedLocation: doorResult.stagedLocation || "",
         hasDriverPhoto: Boolean(form.elements.driverPhoto?.files?.length),
         hasEquipmentPhoto: Boolean(form.elements.equipmentPhoto?.files?.length),
         hasLoadPhoto: Boolean(form.elements.loadPhoto?.files?.length),
@@ -699,6 +702,33 @@ function getDoorAssignment(customerValue) {
     return "Go to Door 45";
   }
   return "Go to the door between docks 165 & 166";
+}
+
+async function resolveStagedDoor(loadId) {
+  if (!loadId) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(`/api/wms-staged-door?loadId=${encodeURIComponent(loadId)}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.door) return data;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getDoorAssignmentWithStaging(loadId, customerValue) {
+  // Priority 1: Staged-location-based door assignment
+  const stagedResult = await resolveStagedDoor(loadId);
+  if (stagedResult && stagedResult.door) {
+    return { assignment: stagedResult.door, source: stagedResult.source, stagedLocation: stagedResult.locationName || "" };
+  }
+  // Priority 2: Customer-based Excel rules (existing behavior)
+  const assignment = getDoorAssignment(customerValue);
+  return { assignment, source: "customer_rule", stagedLocation: "" };
 }
 
 function normalize(value = "") {

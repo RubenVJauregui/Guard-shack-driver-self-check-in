@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const os = require("node:os");
 const nodemailer = require("nodemailer");
 const db = require("./db");
+const { stagingToDoorMapping, outboundActiveStatuses, excludedStatuses } = require("./staging-door-config");
 
 const root = __dirname;
 const dataDir = path.join(root, "identity-records");
@@ -633,6 +634,27 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/wms-staged-door") {
+    const loadId = url.searchParams.get("loadId") || "";
+    if (!loadId) {
+      sendJson(res, { door: null, source: "no_load_id" });
+      return;
+    }
+    const bearerToken = await getWmsBearerToken();
+    if (!bearerToken) {
+      sendJson(res, { door: null, source: "auth_unavailable" });
+      return;
+    }
+    try {
+      const result = await lookupStagedDoor(loadId, `Bearer ${bearerToken}`);
+      sendJson(res, result);
+    } catch (err) {
+      console.log(`[Staged door] endpoint error: ${err.message}`);
+      sendJson(res, { door: null, source: "error", error: err.message });
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/checkins") {
     const result = await db.queryCheckins(Object.fromEntries(url.searchParams.entries()));
     sendJson(res, result);
@@ -1032,4 +1054,209 @@ function wmsInboundLookup(keyword, authHeader) {
     req.write(postBody);
     req.end();
   });
+}
+
+
+function wmsSearchInventoryByLoad(loadId, authHeader) {
+  return new Promise((resolve) => {
+    const searchUrl = new URL(`${WMS_BASE_URL}/wms/wms-inventory/search`);
+    const postBody = JSON.stringify({
+      loadId,
+      statuses: outboundActiveStatuses,
+      excludeStatuses,
+      currentPage: 1,
+      pageSize: 200
+    });
+    const mod = searchUrl.protocol === "https:" ? https : http;
+    const req = mod.request(searchUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "x-tenant-id": WMS_TENANT_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "item-time-zone": TIMEZONE,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": Buffer.byteLength(postBody)
+      },
+      timeout: 8000
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          const rows = parsed?.data || [];
+          resolve(Array.isArray(rows) ? rows : []);
+        } catch (err) {
+          console.log(`[WMS inventory] loadId=${loadId} -> parse error: ${err.message}`);
+          resolve([]);
+        }
+      });
+    });
+    req.on("error", (err) => {
+      console.log(`[WMS inventory] loadId=${loadId} -> network error: ${err.message}`);
+      resolve([]);
+    });
+    req.on("timeout", () => {
+      console.log(`[WMS inventory] loadId=${loadId} -> timeout`);
+      req.destroy();
+      resolve([]);
+    });
+    req.write(postBody);
+    req.end();
+  });
+}
+
+function wmsSearchLocations(locationIds, authHeader) {
+  return new Promise((resolve) => {
+    if (!locationIds.length) { resolve([]); return; }
+    const searchUrl = new URL(`${WMS_BASE_URL}/wms/wms-location/search`);
+    const postBody = JSON.stringify({ ids: locationIds, currentPage: 1, pageSize: locationIds.length + 10 });
+    const mod = searchUrl.protocol === "https:" ? https : http;
+    const req = mod.request(searchUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "x-tenant-id": WMS_TENANT_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "item-time-zone": TIMEZONE,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": Buffer.byteLength(postBody)
+      },
+      timeout: 8000
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          const rows = parsed?.data || [];
+          resolve(Array.isArray(rows) ? rows : []);
+        } catch (err) {
+          console.log(`[WMS location] -> parse error: ${err.message}`);
+          resolve([]);
+        }
+      });
+    });
+    req.on("error", (err) => {
+      console.log(`[WMS location] -> network error: ${err.message}`);
+      resolve([]);
+    });
+    req.on("timeout", () => {
+      console.log(`[WMS location] -> timeout`);
+      req.destroy();
+      resolve([]);
+    });
+    req.write(postBody);
+    req.end();
+  });
+}
+
+function resolveDoorFromStagedLocation(locations, inventoryRows) {
+  if (!locations.length) return null;
+
+  // Count inventory rows per locationId to find dominant location
+  const locationCounts = {};
+  for (const row of inventoryRows) {
+    if (row.locationId) {
+      locationCounts[row.locationId] = (locationCounts[row.locationId] || 0) + (row.qty || 1);
+    }
+  }
+
+  // Sort locations by inventory quantity (dominant first)
+  const sortedLocations = [...locations].sort((a, b) => {
+    return (locationCounts[b.id] || 0) - (locationCounts[a.id] || 0);
+  });
+
+  const dominantLocation = sortedLocations[0];
+  if (!dominantLocation) return null;
+
+  // If location type is DOCK or category is DOCK, route directly to that dock
+  if (dominantLocation.type === "DOCK" || dominantLocation.category === "DOCK") {
+    const doorName = dominantLocation.name || dominantLocation.akaName || "assigned dock";
+    return {
+      door: `Go to the door at ${doorName}`,
+      source: "dock_location",
+      locationName: doorName,
+      locationType: dominantLocation.type,
+      locationCategory: dominantLocation.category,
+      locationId: dominantLocation.id
+    };
+  }
+
+  // If location type is STAGING or other warehouse type, check configurable mapping
+  const locationName = (dominantLocation.name || "").toUpperCase();
+  for (const mapping of stagingToDoorMapping) {
+    const pattern = (mapping.pattern || "").toUpperCase();
+    if (!pattern) continue;
+    if (locationName === pattern || locationName.startsWith(pattern)) {
+      return {
+        door: mapping.door,
+        source: "staging_mapping",
+        locationName: dominantLocation.name,
+        locationType: dominantLocation.type,
+        locationCategory: dominantLocation.category,
+        locationId: dominantLocation.id,
+        matchedPattern: mapping.pattern
+      };
+    }
+  }
+
+  // Multiple different locations with no clear mapping = ambiguous
+  const uniqueLocationIds = [...new Set(inventoryRows.map((r) => r.locationId).filter(Boolean))];
+  if (uniqueLocationIds.length > 1 && !locationCounts[dominantLocation.id]) {
+    return {
+      door: null,
+      source: "ambiguous",
+      locationName: dominantLocation.name,
+      locationType: dominantLocation.type,
+      locationId: dominantLocation.id,
+      uniqueLocations: uniqueLocationIds.length
+    };
+  }
+
+  // No mapping found for this staging location - return info but no door override
+  return {
+    door: null,
+    source: "no_mapping",
+    locationName: dominantLocation.name,
+    locationType: dominantLocation.type,
+    locationCategory: dominantLocation.category,
+    locationId: dominantLocation.id
+  };
+}
+
+async function lookupStagedDoor(loadId, authHeader) {
+  if (!loadId) return { door: null, source: "no_load_id" };
+
+  console.log(`[Staged door] Looking up inventory for loadId=${loadId}`);
+  const inventoryRows = await wmsSearchInventoryByLoad(loadId, authHeader);
+
+  if (!inventoryRows.length) {
+    console.log(`[Staged door] No active inventory rows found for loadId=${loadId}`);
+    return { door: null, source: "no_inventory", loadId };
+  }
+
+  console.log(`[Staged door] Found ${inventoryRows.length} inventory rows for loadId=${loadId}`);
+
+  // Collect unique locationIds
+  const locationIds = [...new Set(inventoryRows.map((r) => r.locationId).filter(Boolean))];
+  if (!locationIds.length) {
+    console.log(`[Staged door] No locationIds in inventory rows for loadId=${loadId}`);
+    return { door: null, source: "no_location_ids", loadId, inventoryCount: inventoryRows.length };
+  }
+
+  console.log(`[Staged door] Resolving ${locationIds.length} unique locations`);
+  const locations = await wmsSearchLocations(locationIds, authHeader);
+
+  if (!locations.length) {
+    console.log(`[Staged door] Could not resolve any locations for loadId=${loadId}`);
+    return { door: null, source: "location_resolve_failed", loadId, locationIds };
+  }
+
+  const result = resolveDoorFromStagedLocation(locations, inventoryRows);
+  console.log(`[Staged door] loadId=${loadId} -> source=${result?.source}, door=${result?.door || "none"}, location=${result?.locationName || ""}`);
+  return { ...result, loadId, inventoryCount: inventoryRows.length, locationCount: locations.length };
 }
