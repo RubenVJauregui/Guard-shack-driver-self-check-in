@@ -835,10 +835,91 @@ function getLanIp() {
   return "";
 }
 
+function normalizeLookupValue(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isGenericLookupInput(value) {
+  const raw = String(value || "").trim();
+  const normalized = normalizeLookupValue(raw);
+  const generic = new Set(["NA", "N", "NAN", "NAA", "NONE", "NULL", "UNKNOWN", "LOAD", "PO", "RN", "PICKUP", "PICK", "REFERENCE", "REF", "BOL", "NUMBER", "NUM", "TEST", "ASDF", "ASDFGH"]);
+  if (!normalized || normalized.length < 4) return true;
+  if (generic.has(normalized)) return true;
+  if (/^[A-Z]+$/.test(normalized) && normalized.length < 6) return true;
+  return false;
+}
+
+function collectLookupCandidateValues(record) {
+  const values = [];
+  const preferredKeys = /^(loadNo|loadNumber|loadId|receiptId|receiptNo|rn|rnNo|referenceNo|refNo|poNo|purchaseOrderNo|pickupNo|pickupNumber|appointmentNo|bolNo|orderNo|orderId|orderIds|dnNo|containerNo|trailerNo)$/i;
+  const excludedKeys = /customer|carrier|address|name|status|type|time|date|created|updated|note|comment/i;
+
+  function visit(obj, key = "") {
+    if (obj == null) return;
+    if (Array.isArray(obj)) {
+      obj.forEach((item) => visit(item, key));
+      return;
+    }
+    if (typeof obj === "object") {
+      Object.entries(obj).forEach(([childKey, value]) => {
+        if (preferredKeys.test(childKey) || (!excludedKeys.test(childKey) && /no$|id$|number$|code$/i.test(childKey))) {
+          visit(value, childKey);
+        } else if (typeof value === "object") {
+          visit(value, childKey);
+        }
+      });
+      return;
+    }
+    if ((typeof obj === "string" || typeof obj === "number") && !excludedKeys.test(key)) {
+      const text = String(obj).trim();
+      if (text) values.push({ key, text, normalized: normalizeLookupValue(text) });
+    }
+  }
+
+  visit(record);
+  return values.filter((v) => v.normalized.length >= 4);
+}
+
+function isStrongLookupMatch(input, record) {
+  const normalizedInput = normalizeLookupValue(input);
+  if (isGenericLookupInput(input)) return false;
+  const candidates = collectLookupCandidateValues(record);
+  for (const candidate of candidates) {
+    const c = candidate.normalized;
+    if (c === normalizedInput) return true;
+    // Allow a real pickup/load number to match the leading token in strings like "45107769 // SP BOL".
+    if (normalizedInput.length >= 6 && c.startsWith(normalizedInput)) return true;
+    // Allow exact token match before punctuation/slashes/spaces.
+    const rawTokens = candidate.text.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+    if (rawTokens.some((token) => normalizeLookupValue(token) === normalizedInput)) return true;
+  }
+  return false;
+}
+
+function formatWmsLookupResult(match) {
+  return {
+    customer: match.customerName,
+    customerCode: match.customerCode || "",
+    customerId: match.customerId || "",
+    loadNo: match.loadNo || "",
+    loadId: match.id || match.loadId || "",
+    orderIds: match.orderIds || [],
+    carrierName: match.carrierName || "",
+    appointmentTime: match.appointmentTime || ""
+  };
+}
+
 function wmsLookup(rn, authHeader) {
   return new Promise((resolve) => {
+    const rawInput = String(rn || "").trim();
+    if (isGenericLookupInput(rawInput)) {
+      console.log(`[WMS lookup] RN=${rawInput} -> rejected generic/too-short input`);
+      resolve({ customer: "" });
+      return;
+    }
+
     const lookupUrl = new URL(`${WMS_BASE_URL}/wms-bam/outbound/load/search-by-paging`);
-    const postBody = JSON.stringify({ pageNo: 1, pageSize: 10, keyword: rn });
+    const postBody = JSON.stringify({ pageNo: 1, pageSize: 10, keyword: rawInput });
     const mod = lookupUrl.protocol === "https:" ? https : http;
     const req = mod.request(lookupUrl, {
       method: "POST",
@@ -858,35 +939,26 @@ function wmsLookup(rn, authHeader) {
         try {
           const parsed = JSON.parse(body);
           const list = parsed?.data?.list || [];
-          const match = list[0];
-          if (match && match.customerName) {
-            console.log(`[WMS lookup] RN=${rn} -> customer="${match.customerName}" loadNo="${match.loadNo || ""}"`);
-            resolve({
-              customer: match.customerName,
-              customerCode: match.customerCode || "",
-              customerId: match.customerId || "",
-              loadNo: match.loadNo || "",
-              loadId: match.id || match.loadId || "",
-              orderIds: match.orderIds || [],
-              carrierName: match.carrierName || "",
-              appointmentTime: match.appointmentTime || ""
-            });
+          const match = list.find((item) => item?.customerName && isStrongLookupMatch(rawInput, item));
+          if (match) {
+            console.log(`[WMS lookup] RN=${rawInput} -> accepted strong match customer="${match.customerName}" loadNo="${match.loadNo || ""}"`);
+            resolve(formatWmsLookupResult(match));
           } else {
-            console.log(`[WMS lookup] RN=${rn} -> no match (${list.length} results)`);
+            console.log(`[WMS lookup] RN=${rawInput} -> rejected weak/fuzzy results (${list.length} results)`);
             resolve({ customer: "" });
           }
         } catch (err) {
-          console.log(`[WMS lookup] RN=${rn} -> parse error: ${err.message}`);
+          console.log(`[WMS lookup] RN=${rawInput} -> parse error: ${err.message}`);
           resolve({ customer: "" });
         }
       });
     });
     req.on("error", (err) => {
-      console.log(`[WMS lookup] RN=${rn} -> network error: ${err.message}`);
+      console.log(`[WMS lookup] RN=${rawInput} -> network error: ${err.message}`);
       resolve({ customer: "" });
     });
     req.on("timeout", () => {
-      console.log(`[WMS lookup] RN=${rn} -> timeout`);
+      console.log(`[WMS lookup] RN=${rawInput} -> timeout`);
       req.destroy();
       resolve({ customer: "" });
     });
