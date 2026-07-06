@@ -32,7 +32,7 @@ const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Valley View Driver Check-In <no-reply@unisco.com>";
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Lincoln Driver Check-In <no-reply@unisco.com>";
 
 function isEmailEnabled() {
   return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && ALERT_RECIPIENTS.length);
@@ -72,7 +72,7 @@ async function sendCheckinEmailNotification(etNumber, payload) {
     return { sent: false, reason: "smtp_not_configured" };
   }
   const trip = payload.tripInfo || {};
-  const subjectParts = ["Valley View Driver Check-In", etNumber];
+  const subjectParts = ["Lincoln Driver Check-In", etNumber];
   if (trip.receiptId || trip.poNo || trip.loadNo) subjectParts.push(trip.receiptId || trip.poNo || trip.loadNo);
   const subject = subjectParts.filter(Boolean).join(" - ");
   const text = formatNotificationLines(etNumber, payload).join("\n");
@@ -125,7 +125,7 @@ async function sendStoredCheckinEmailNotification(record = {}) {
   const summary = pickupSummaryFromRecord(record);
   const driverName = record.driverName || record.driver_name || [record.driverFirstName, record.driverLastName].filter(Boolean).join(" ");
   const etNumber = record.etNumber || record.et_number || "";
-  const subject = ["Valley View Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
+  const subject = ["Lincoln Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
   const lines = [
     "A driver has completed check-in at Lincoln (LT_F22).",
     "",
@@ -152,7 +152,7 @@ async function sendStoredCheckinEmailNotification(record = {}) {
   ];
   const text = lines.join("\n");
   const html = `<div style="font-family:Arial,sans-serif;line-height:1.45;color:#111">
-    <h2 style="margin:0 0 12px">Valley View Driver Check-In</h2>
+    <h2 style="margin:0 0 12px">Lincoln Driver Check-In</h2>
     <p><strong>Check-in link:</strong> <a href="${escapeHtmlServer(checkinLink)}">${escapeHtmlServer(checkinLink)}</a></p>
     <p><strong>Dock door assignment:</strong> ${escapeHtmlServer(doorAssignment)}</p>
     <p><strong>Pickup summary:</strong> ${escapeHtmlServer(summary)}</p>
