@@ -1,5 +1,5 @@
-// Door assignment rules from "Door asignment.xlsx" only
-// Column B (cell B1): "Door between docks 165 & 166"
+// Door assignment rules from latest "Door asignment.xlsx" only
+// Column B: "Go to the door between docks 165 & 166"
 const doorBetween165_166Customers = [
   "RST",
   "KING'S HAWAIIAN",
@@ -20,8 +20,8 @@ const doorBetween165_166Customers = [
   "TCL - Solar Cell"
 ];
 
-// Column D (cell D1): "Door 45"
-const door45Customers = [
+// Column D: "Go to the door at dock 144"
+const door144Customers = [
   "ALL MARKET INC / VITA COCO",
   "COME READY FOODS",
   "HINT INC",
@@ -34,6 +34,29 @@ const door45Customers = [
   "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
   "SPLENDOR WATER LLC",
   "WISMETTAC ASIAN FOODS"
+];
+
+// Column F: "Go to the door at Dock 45"
+const door45Customers = [
+  "TCL NORTH AMERICA",
+  "LENNOX INDUSTRIES INC.",
+  "AMIEE LYNN, LNC.",
+  "KARAKA, LLC",
+  "NZXT",
+  "CMPC USA (Cut Paper and Rolls)",
+  "WOODY FLAW CREST INC",
+  "North Star",
+  "CMPC USA",
+  "La Jolla",
+  "ESI",
+  "TPV USA",
+  "Gurunanda",
+  "the only bean"
+];
+
+// Column H: "Go to Dock 70"
+const door70Customers = [
+  "Euromarket / Crate & Barrel"
 ];
 
 const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
@@ -70,7 +93,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...doorBetween165_166Customers, ...door45Customers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...doorBetween165_166Customers, ...door144Customers, ...door45Customers, ...door70Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -695,8 +718,14 @@ function getDoorAssignment(customerValue) {
   if (doorBetween165_166Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
     return "Go to the door between docks 165 & 166";
   }
+  if (door144Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door at dock 144";
+  }
   if (door45Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to Door 45";
+    return "Go to the door at Dock 45";
+  }
+  if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to Dock 70";
   }
   return EXCEL_DEFAULT_DOOR;
 }
