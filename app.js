@@ -195,7 +195,7 @@ nextBtn.addEventListener("click", async () => {
     const identifiers = getLoadIdentifiers(data);
 
     if (!identifiers.length) {
-      showActionError("Please enter a Reference / PO / RN / Load # before continuing.");
+      showActionError("Please enter a PO / RN / Load # before continuing.");
       return;
     }
 
@@ -225,9 +225,9 @@ nextBtn.addEventListener("click", async () => {
       rnLookupAttempts++;
       const tried = identifiers.join(", ");
       if (rnLookupAttempts >= 3) {
-        showActionError(`Reference / PO / RN / Load was not found after multiple attempts. ${FALLBACK_AFTER_MAX_ATTEMPTS}`);
+        showActionError(`PO / RN / Load was not found after multiple attempts. ${FALLBACK_AFTER_MAX_ATTEMPTS}`);
       } else {
-        showActionError(`Reference / PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
+        showActionError(`PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
     }
     return;
@@ -436,7 +436,7 @@ function buildReview() {
     ["Vehicle", `${data.vehicleType || ""} ${data.plate || ""}`.trim()],
     ["Equipment", `${data.equipmentType || ""} ${data.equipmentNo || ""}`.trim()],
     ["Entry Task", data.entryTask || ""],
-    ["Reference", data.referenceNo || data.loadNo || ""]
+    ["PO / RN / Load", data.loadNo || ""]
   ];
 
   review.innerHTML = rows
@@ -644,7 +644,7 @@ async function completeCheckin() {
 }
 
 function getLoadIdentifiers(data) {
-  return [...new Set([data.loadNo, data.referenceNo].map((value) => (value || "").trim()).filter(Boolean))];
+  return [...new Set([data.loadNo].map((value) => (value || "").trim()).filter(Boolean))];
 }
 
 async function resolveCustomerFromIdentifiers(identifiers) {
