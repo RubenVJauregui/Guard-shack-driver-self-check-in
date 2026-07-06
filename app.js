@@ -1,28 +1,42 @@
-const dock98_97Customers = [
-  "UNIS TRANSPORTATION",
+// Door assignment rules from "Door asignment.xlsx"
+// Column B (cell B1): "Door between docks 165 & 166"
+const doorBetween165_166Customers = [
+  "RST",
+  "KING'S HAWAIIAN",
+  "MAMMA CHIA",
+  "MELOGRANO DRINKS LLC",
+  "MUSE ORGANIC LLC",
+  "NATURAL DECADENCE LLC",
+  "ORGAIN, LLC",
+  "OVERSEAS FOOD TRADING",
+  "POMPEIAN INC",
+  "PREFERRED BRANDS",
+  "RECOVERY SPORTS LLC",
+  "RISE BEVERAGES LLC DBA",
+  "SANS WINE & SPIRITS",
+  "UPTIME ENERGY INC",
+  "WATER PLUS LLC",
+  "ZEN BEVERAGE LLC",
+  "TCL - Solar Cell"
+];
+
+// Column D (cell D1): "Door 45"
+const door45Customers = [
   "ALL MARKET INC / VITA COCO",
-  "SAFE CATCH",
-  "GALANZ",
-  "TCL",
-  "SPLENDOR",
-  "STRON",
-  "KING COFFEE",
-  "ZURU",
-  "DELMAR"
+  "COME READY FOODS",
+  "HINT INC",
+  "SOURCE86",
+  "KACE TEA LLC",
+  "PLEASS GLOBAL LIMITED",
+  "PREFERRED BRANDS",
+  "RITUAL BEVERAGE COMPANY",
+  "ROAR BEVERAGES INC",
+  "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
+  "SPLENDOR WATER LLC",
+  "WISMETTAC ASIAN FOODS"
 ];
 
-const dock75_74Customers = [
-  "NATUS",
-  "STRON",
-  "FED EX UPS"
-];
-
-const dock56_55Customers = [
-  "SCHINDLER",
-  "LIPPERT",
-  "NIAGARA BOTTLING LLC-RESIN",
-  "MAMMC"
-];
+// Column F (cell F1): "Door between docks 165 & 166" (same as B1 — default/fallback)
 
 const rnToCustomerMap = {
   "4700011468": { customer: "ALL MARKET INC / VITA COCO", type: "inbound", receiptId: "RN-6380", poNo: "4700011468", referenceNo: "0080804544" },
@@ -60,7 +74,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...dock98_97Customers, ...dock75_74Customers, ...dock56_55Customers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...doorBetween165_166Customers, ...door45Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -110,7 +124,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message (from Excel B1)
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to Dock 98";
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -132,7 +146,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showActionError("Go to Dock 98 and see the employee");
+      showActionError("Go to the door between docks 165 & 166 and see the employee");
     }
     return;
   }
@@ -677,17 +691,14 @@ async function saveIdentityRecord(identityRecord) {
 
 function getDoorAssignment(customerValue) {
   const normalized = normalize(customerValue);
-  if (!normalized) return "Go to Dock 98";
-  if (dock98_97Customers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door between docks 98 & 97";
+  if (!normalized) return "Go to the door between docks 165 & 166";
+  if (doorBetween165_166Customers.some((customer) => normalize(customer) === normalized)) {
+    return "Go to the door between docks 165 & 166";
   }
-  if (dock75_74Customers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door between docks 75 & 74";
+  if (door45Customers.some((customer) => normalize(customer) === normalized)) {
+    return "Go to Door 45";
   }
-  if (dock56_55Customers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door between docks 56 & 55";
-  }
-  return "Go to Dock 98";
+  return "Go to the door between docks 165 & 166";
 }
 
 function normalize(value = "") {
