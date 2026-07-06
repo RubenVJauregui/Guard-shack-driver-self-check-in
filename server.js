@@ -45,7 +45,7 @@ function formatNotificationLines(etNumber, payload) {
   const equipment = payload.equipmentInfo || {};
   const trip = payload.tripInfo || {};
   return [
-    `A driver has completed check-in at Valley View (LT_F1).`,
+    `A driver has completed check-in at Lincoln (LT_F22).`,
     ``,
     `ET#: ${etNumber || ""}`,
     `Type: ${trip.direction === "inbound" ? "Inbound receipt" : "Outbound / yard task"}`,
@@ -127,7 +127,7 @@ async function sendStoredCheckinEmailNotification(record = {}) {
   const etNumber = record.etNumber || record.et_number || "";
   const subject = ["Valley View Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
   const lines = [
-    "A driver has completed check-in at Valley View (LT_F1).",
+    "A driver has completed check-in at Lincoln (LT_F22).",
     "",
     `Check-in link: ${checkinLink}`,
     `Dashboard: ${dashboardLink}`,
