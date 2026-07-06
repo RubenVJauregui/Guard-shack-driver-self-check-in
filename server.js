@@ -667,7 +667,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pathname.includes("summary") && !url.pathname.includes("export")) {
+
+  if (req.method === "PATCH" && /^\/api\/checkins\/(\d+)\/assignment$/.test(url.pathname)) {
+    const id = url.pathname.match(/\/api\/checkins\/(\d+)\/assignment/)[1];
+    try {
+      const body = await readBody(req);
+      const data = JSON.parse(body || "{}");
+      const result = await db.updateAssignment(Number(id), data);
+      if (result) sendJson(res, { updated: true, assignment: result });
+      else sendJson(res, { updated: false, error: "Record not found or not a Lincoln record" }, 404);
+    } catch (err) {
+      console.log(`[Assignment] error: ${err.message}`);
+      sendJson(res, { updated: false, error: "Assignment update failed" }, 500);
+    }
+    return;
+  }
+
+if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pathname.includes("summary") && !url.pathname.includes("export")) {
     const id = url.pathname.split("/").pop();
     if (!id || isNaN(Number(id))) { sendJson(res, { error: "Invalid ID" }, 400); return; }
     const record = await db.getCheckinById(Number(id));
@@ -781,6 +797,7 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.log(`[Edit] PATCH error: ${err.message}`);
       sendJson(res, { error: "Update failed", localUpdated: false, wiseUpdated: false }, 500);
+
     }
     return;
   }
