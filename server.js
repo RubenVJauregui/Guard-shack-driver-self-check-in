@@ -18,8 +18,8 @@ const WMS_AUTH_TOKEN = process.env.WMS_AUTH_TOKEN || "";
 const WMS_USERNAME = process.env.WMS_USERNAME || "";
 const WMS_PASSWORD_B64 = process.env.WMS_PASSWORD_B64 || "";
 const WMS_PASSWORD_RAW = process.env.WMS_PASSWORD || "";
-const WMS_TENANT_ID = process.env.WMS_TENANT_ID || "LT";
-const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F1";
+const WMS_TENANT_ID = "LT";
+const WMS_FACILITY_ID = "LT_F22";
 const YMS_BASE_URL = process.env.YMS_BASE_URL || "https://traffic.item.com/api/yms";
 const TIMEZONE = process.env.TIMEZONE || "America/Los_Angeles";
 const OPERATOR_NOTIFICATION_RECIPIENT = process.env.OPERATOR_NOTIFICATION_RECIPIENT || "Juan.barragan@unisco.com";
@@ -805,7 +805,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(200, { "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream" });
+  res.writeHead(200, { "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream", "Cache-Control": "no-store" });
   if (req.method === "HEAD") res.end();
   else fs.createReadStream(filePath).pipe(res);
 });
@@ -832,7 +832,7 @@ function readBody(req) {
 }
 
 function sendJson(res, data, status = 200) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(data));
 }
 
