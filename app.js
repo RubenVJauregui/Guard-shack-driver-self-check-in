@@ -135,6 +135,11 @@ function isDropOffEmpty() {
   return task === "drop off empty";
 }
 
+function isDropOffFull() {
+  const task = (form.elements.entryTask?.value || "").trim().toLowerCase();
+  return task === "drop off full";
+}
+
 document.querySelector("#entryTaskSelect").addEventListener("change", () => {
   const loadFields = document.querySelector("#loadFieldsRow");
   if (loadFields) {
@@ -592,6 +597,17 @@ async function completeCheckin() {
     if (qrHelp) qrHelp.style.display = "none";
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = "";
+    completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
+  } else if (isDropOffFull()) {
+    doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";
+    identityQr.style.display = "";
+    identityQrLink.style.display = "";
+    const qrHelp = document.querySelector(".qr-help");
+    if (qrHelp) qrHelp.style.display = "";
+    identityQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&data=${encodeURIComponent(identityUrl)}`;
+    identityQrLink.href = identityUrl;
+    etNumberEl.textContent = `ET# ${etNumber}`;
+    rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
   } else {
     doorInstruction.textContent = assignment;
