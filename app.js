@@ -1,48 +1,18 @@
-// Door assignment rules from "Door asignment.xlsx"
-// Column B (cell B1): "Door between docks 165 & 166"
-const doorBetween165_166Customers = [
-  "RST",
-  "KING'S HAWAIIAN",
-  "MAMMA CHIA",
-  "MELOGRANO DRINKS LLC",
-  "MUSE ORGANIC LLC",
-  "NATURAL DECADENCE LLC",
-  "ORGAIN, LLC",
-  "OVERSEAS FOOD TRADING",
-  "POMPEIAN INC",
-  "PREFERRED BRANDS",
-  "RECOVERY SPORTS LLC",
-  "RISE BEVERAGES LLC DBA",
-  "SANS WINE & SPIRITS",
-  "UPTIME ENERGY INC",
-  "WATER PLUS LLC",
-  "ZEN BEVERAGE LLC",
-  "TCL - Solar Cell"
+// Door assignment rules for Fontana facility (LT_ORG-7759)
+// Customer: SharkNinja / SharkNinja Sales Company -> "Go to the door between dock 2"
+const sharkNinjaCustomers = [
+  "SHARKNINJA",
+  "SHARKNINJA SALES COMPANY",
+  "SHARK NINJA",
+  "SHARK NINJA SALES COMPANY",
+  "SHARKNINJA SALES",
+  "SHARKNINJA INC"
 ];
 
-// Column D (cell D1): "Door 45"
-const door45Customers = [
-  "ALL MARKET INC / VITA COCO",
-  "COME READY FOODS",
-  "HINT INC",
-  "SOURCE86",
-  "KACE TEA LLC",
-  "PLEASS GLOBAL LIMITED",
-  "PREFERRED BRANDS",
-  "RITUAL BEVERAGE COMPANY",
-  "ROAR BEVERAGES INC",
-  "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
-  "SPLENDOR WATER LLC",
-  "WISMETTAC ASIAN FOODS"
-];
+// Default door instruction for Fontana when no staging location or customer match
+const FONTANA_DEFAULT_DOOR = "Go to the door between dock 2";
 
-// Column F (cell F1): "Door between docks 165 & 166" (same as B1 — default/fallback)
-
-const rnToCustomerMap = {
-  "4700011468": { customer: "ALL MARKET INC / VITA COCO", type: "inbound", receiptId: "RN-6380", poNo: "4700011468", referenceNo: "0080804544" },
-  "RN-6380": { customer: "ALL MARKET INC / VITA COCO", type: "inbound", receiptId: "RN-6380", poNo: "4700011468", referenceNo: "0080804544" },
-  "0080804544": { customer: "ALL MARKET INC / VITA COCO", type: "inbound", receiptId: "RN-6380", poNo: "4700011468", referenceNo: "0080804544" }
-};
+const rnToCustomerMap = {};
 
 const screenTitles = [
   "Driver Portal",
@@ -74,7 +44,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...doorBetween165_166Customers, ...door45Customers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...sharkNinjaCustomers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -123,8 +93,8 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
   }
 });
 
-// After 3 failed PO/RN/Load lookups, show this message (from Excel B1)
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
+// After 3 failed PO/RN/Load lookups, show this message
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between dock 2";
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -146,7 +116,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showActionError("Go to the door between docks 165 & 166 and see the employee");
+      showActionError("Go to the door between dock 2 and see the employee");
     }
     return;
   }
@@ -694,14 +664,15 @@ async function saveIdentityRecord(identityRecord) {
 
 function getDoorAssignment(customerValue) {
   const normalized = normalize(customerValue);
-  if (!normalized) return "Go to the door between docks 165 & 166";
-  if (doorBetween165_166Customers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door between docks 165 & 166";
+  if (!normalized) return FONTANA_DEFAULT_DOOR;
+  if (sharkNinjaCustomers.some((customer) => normalize(customer) === normalized)) {
+    return "Go to the door between dock 2";
   }
-  if (door45Customers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to Door 45";
+  // Partial match: customer name contains "SHARKNINJA" or "SHARK NINJA"
+  if (normalized.includes("SHARKNINJA") || normalized.includes("SHARK NINJA")) {
+    return "Go to the door between dock 2";
   }
-  return "Go to the door between docks 165 & 166";
+  return FONTANA_DEFAULT_DOOR;
 }
 
 async function resolveStagedDoor(loadId) {
