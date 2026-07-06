@@ -667,6 +667,124 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pathname.includes("summary") && !url.pathname.includes("export")) {
+    const id = url.pathname.split("/").pop();
+    if (!id || isNaN(Number(id))) { sendJson(res, { error: "Invalid ID" }, 400); return; }
+    const record = await db.getCheckinById(Number(id));
+    if (!record) { sendJson(res, { error: "Check-in not found" }, 404); return; }
+    sendJson(res, record);
+    return;
+  }
+
+  if ((req.method === "PATCH" || req.method === "PUT") && url.pathname.startsWith("/api/checkins/")) {
+    const id = url.pathname.split("/").pop();
+    if (!id || isNaN(Number(id))) { sendJson(res, { error: "Invalid ID" }, 400); return; }
+    try {
+      const body = await readBody(req);
+      const payload = JSON.parse(body || "{}");
+      const fields = payload.fields || {};
+      const updatedBy = payload.updatedBy || "ops-dashboard";
+      const updateNotes = payload.updateNotes || "";
+
+      // Validate at least one editable field
+      const validKeys = Object.keys(fields).filter(k => db.EDITABLE_FIELDS.includes(k));
+      if (validKeys.length === 0) { sendJson(res, { error: "No valid editable fields provided" }, 400); return; }
+
+      // Fetch existing record for ET number
+      const existing = await db.getCheckinById(Number(id));
+      if (!existing) { sendJson(res, { error: "Check-in not found" }, 404); return; }
+
+      // Update local DB
+      const updated = await db.updateCheckin(Number(id), fields, updatedBy, updateNotes);
+      const localUpdated = Boolean(updated);
+
+      // Attempt YMS/WISE update if ET exists
+      let wiseUpdated = false;
+      let wiseMessage = "";
+      const etNumber = existing.et_number;
+      if (etNumber && localUpdated) {
+        try {
+          const ymsToken = await getYmsBearerToken();
+          if (!ymsToken) {
+            wiseMessage = "WISE update skipped: unable to authenticate with yard management system.";
+          } else {
+            // Update basic info (driver/carrier/vehicle/equipment)
+            const merged = { ...existing, ...fields };
+            const basicPayload = {
+              driverInfo: {
+                driverPhone: merged.driver_phone || "",
+                firstName: merged.driver_first_name || "",
+                lastName: merged.driver_last_name || "",
+                driverName: merged.driver_name || `${merged.driver_first_name || ""} ${merged.driver_last_name || ""}`.trim(),
+                licenseNumber: merged.driver_license || ""
+              },
+              carrierInfo: {
+                carrierName: merged.carrier_name || "",
+                usdotNumber: merged.usdot || ""
+              },
+              vehicleInfo: {
+                licensePlate: merged.license_plate || "",
+                vehicleType: merged.vehicle_type || "Tractor"
+              },
+              equipmentInfo: {
+                equipmentNo: merged.equipment_no || "",
+                equipmentType: merged.equipment_type || "Trailer",
+                sealNumber: ""
+              }
+            };
+            let basicOk = false;
+            try {
+              await attachBasicInfo(ymsToken, etNumber, basicPayload);
+              basicOk = true;
+            } catch (err) {
+              console.log(`[Edit WISE] basic-info update failed for ${etNumber}: ${err.message}`);
+            }
+
+            // Update trip info
+            const tripPayload = {
+              direction: merged.direction || "outbound",
+              customerId: merged.customer_id || "",
+              receiptId: merged.receipt_id || "",
+              poNo: merged.po_no || "",
+              referenceNo: merged.reference_no || "",
+              loadId: merged.load_id || "",
+              loadNo: merged.load_no || merged.wms_load_no || ""
+            };
+            let tripOk = false;
+            try {
+              await attachTripInfo(ymsToken, etNumber, tripPayload);
+              tripOk = true;
+            } catch (err) {
+              console.log(`[Edit WISE] trip-info update failed for ${etNumber}: ${err.message}`);
+            }
+
+            wiseUpdated = basicOk || tripOk;
+            if (basicOk && tripOk) {
+              wiseMessage = "WISE updated successfully.";
+            } else if (basicOk) {
+              wiseMessage = "WISE driver/vehicle info updated. Trip/load info could not be updated.";
+            } else if (tripOk) {
+              wiseMessage = "WISE trip/load info updated. Driver/vehicle info could not be updated.";
+            } else {
+              wiseMessage = "WISE update failed. Local record was saved. Please verify in WISE manually.";
+            }
+          }
+        } catch (err) {
+          console.log(`[Edit WISE] update error for ${etNumber}: ${err.message}`);
+          wiseMessage = "WISE update encountered an error. Local record was saved.";
+        }
+      } else if (!etNumber) {
+        wiseMessage = "No ET number on this record. WISE update not applicable.";
+      }
+
+      sendJson(res, { localUpdated, wiseUpdated, message: wiseMessage, record: updated });
+    } catch (err) {
+      console.log(`[Edit] PATCH error: ${err.message}`);
+      sendJson(res, { error: "Update failed", localUpdated: false, wiseUpdated: false }, 500);
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/checkins/export") {
     const result = await db.queryCheckins({ ...Object.fromEntries(url.searchParams.entries()), page: 1, limit: 10000 });
     const headers = ["created_at","et_number","driver_name","driver_phone","driver_license","driver_email","carrier_name","usdot","vehicle_type","license_plate","equipment_type","equipment_no","entry_task","load_type_group","direction","reference_no","load_no","receipt_id","po_no","customer","door_assignment","comments","identity_url"];

@@ -125,6 +125,35 @@ The dashboard stores successful check-ins in PostgreSQL when `DATABASE_URL` is c
 - Date range, carrier, driver, trailer/container, inbound/outbound, load type, and general search filters
 - Full record detail review
 - CSV export
+- **Edit capability** — operations users can edit any check-in record from the detail panel
+
+### Editing a Check-In
+
+From the dashboard detail modal, click **Edit** to enter edit mode. Editable fields include:
+- Driver name, phone, license, email
+- Carrier, USDOT/MC
+- Vehicle type, plate
+- Equipment type, trailer/container number
+- Entry task, direction (inbound/outbound)
+- Reference, PO/RN/Load, Receipt ID, Load ID, WMS Load #
+- Customer, Customer ID, Customer Code
+- Door assignment, comments
+
+When saved, the app:
+1. Updates the local PostgreSQL record with audit trail (updated_at, updated_by, update_notes).
+2. Pushes the updated driver/carrier/vehicle/equipment and trip/load info to the existing YMS entry ticket in WISE 3.0 using the same `basic-info-checkin` and `trip-info-checkin` endpoints used during initial check-in.
+
+The save response shows separate status for local save and WISE update:
+- **Both succeeded** — green confirmation.
+- **Local saved, WISE failed** — amber warning with explanation. The local record is correct; WISE may need manual verification.
+- **Both failed** — red error with guidance.
+
+If the record has no ET number (e.g. older records), WISE update is skipped and clearly noted.
+
+### Edit API
+
+- `GET /api/checkins/:id` — fetch a single check-in record by database ID.
+- `PATCH /api/checkins/:id` — update editable fields. Body: `{ fields: { field: value, ... }, updatedBy: "name", updateNotes: "reason" }`. Returns `{ localUpdated, wiseUpdated, message, record }`.
 
 Required database environment variable:
 - `DATABASE_URL`

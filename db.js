@@ -26,6 +26,10 @@ async function initDb() {
   )`);
   await p.query('CREATE INDEX IF NOT EXISTS idx_checkins_created_at ON checkins(created_at DESC)');
   await p.query('CREATE INDEX IF NOT EXISTS idx_checkins_search ON checkins USING gin (to_tsvector(\'english\', coalesce(driver_name,\'\') || \' \' || coalesce(carrier_name,\'\') || \' \' || coalesce(equipment_no,\'\') || \' \' || coalesce(et_number,\'\') || \' \' || coalesce(load_no,\'\') || \' \' || coalesce(reference_no,\'\')))');
+  // Audit columns for edit capability
+  await p.query(`ALTER TABLE checkins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`);
+  await p.query(`ALTER TABLE checkins ADD COLUMN IF NOT EXISTS updated_by TEXT`);
+  await p.query(`ALTER TABLE checkins ADD COLUMN IF NOT EXISTS update_notes TEXT`);
   console.log('[DB] checkins table ready');
   return true;
 }
@@ -79,4 +83,35 @@ async function queryCheckins(q={}) {
   return {data,total,page,limit};
 }
 async function getSummary(){ const p=getPool(); if(!p) return {total:0,today:0,inbound:0,outbound:0}; const r=(await p.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) today, COUNT(*) FILTER (WHERE direction='inbound') inbound, COUNT(*) FILTER (WHERE direction='outbound') outbound FROM checkins`)).rows[0]; return Object.fromEntries(Object.entries(r).map(([k,v])=>[k,Number(v)])); }
-module.exports={initDb,insertCheckin,queryCheckins,getSummary,loadTypeGroup};
+
+async function getCheckinById(id) {
+  const p = getPool(); if (!p) return null;
+  const result = await p.query('SELECT * FROM checkins WHERE id = $1', [id]);
+  return result.rows[0] || null;
+}
+
+const EDITABLE_FIELDS = [
+  'driver_first_name','driver_last_name','driver_name','driver_phone','driver_license','driver_email',
+  'carrier_name','usdot','vehicle_type','license_plate','equipment_type','equipment_no',
+  'entry_task','load_type_group','reference_no','load_no','comments','customer','customer_id','customer_code',
+  'direction','receipt_id','po_no','load_id','wms_load_no','door_assignment'
+];
+
+async function updateCheckin(id, fields, updatedBy, updateNotes) {
+  const p = getPool(); if (!p) return null;
+  const sets = []; const vals = []; let idx = 1;
+  for (const [key, value] of Object.entries(fields)) {
+    if (!EDITABLE_FIELDS.includes(key)) continue;
+    sets.push(`${key} = $${idx}`); vals.push(value); idx++;
+  }
+  if (sets.length === 0) return null;
+  sets.push(`updated_at = NOW()`);
+  if (updatedBy) { sets.push(`updated_by = $${idx}`); vals.push(updatedBy); idx++; }
+  if (updateNotes) { sets.push(`update_notes = $${idx}`); vals.push(updateNotes); idx++; }
+  vals.push(id);
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`;
+  const result = await p.query(sql, vals);
+  return result.rows[0] || null;
+}
+
+module.exports={initDb,insertCheckin,queryCheckins,getSummary,getCheckinById,updateCheckin,loadTypeGroup,EDITABLE_FIELDS};
