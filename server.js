@@ -675,6 +675,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/ticket-lookup") {
+    const ticket = (url.searchParams.get("ticket") || "").trim();
+    if (!ticket) {
+      sendJson(res, { found: false, error: "No ticket number provided" });
+      return;
+    }
+    try {
+      const wmsToken = await getWmsBearerToken();
+      if (!wmsToken) {
+        sendJson(res, { found: false, error: "Lookup service unavailable" });
+        return;
+      }
+      const wmsResult = await wmsLookup(ticket, `Bearer ${wmsToken}`);
+      if (wmsResult.customer) {
+        console.log(`[Ticket lookup] ticket=${ticket} -> customer="${wmsResult.customer}"`);
+        sendJson(res, {
+          found: true,
+          etNumber: ticket,
+          customer: wmsResult.customer,
+          customerCode: wmsResult.customerCode || "",
+          loadNo: wmsResult.loadNo || "",
+          loadId: wmsResult.loadId || ""
+        });
+      } else {
+        console.log(`[Ticket lookup] ticket=${ticket} -> not found`);
+        sendJson(res, { found: false, error: "Ticket not found" });
+      }
+    } catch (err) {
+      console.log(`[Ticket lookup] error: ${err.message}`);
+      sendJson(res, { found: false, error: "Lookup failed" });
+    }
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket") {
     try {
       const body = await readBody(req);

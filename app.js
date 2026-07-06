@@ -211,6 +211,70 @@ startOverBtn.addEventListener("click", () => {
   showScreen(0);
 });
 
+// --- Already Pre-Checked In flow ---
+const preCheckedInBtn = document.querySelector("#preCheckedInBtn");
+const preCheckinLookup = document.querySelector("#preCheckinLookup");
+const preCheckinTicket = document.querySelector("#preCheckinTicket");
+const preCheckinSearchBtn = document.querySelector("#preCheckinSearchBtn");
+const preCheckinError = document.querySelector("#preCheckinError");
+
+if (preCheckedInBtn) {
+  preCheckedInBtn.addEventListener("click", () => {
+    preCheckinLookup.hidden = !preCheckinLookup.hidden;
+    if (!preCheckinLookup.hidden) preCheckinTicket.focus();
+  });
+}
+
+if (preCheckinSearchBtn) {
+  preCheckinSearchBtn.addEventListener("click", async () => {
+    const ticket = (preCheckinTicket.value || "").trim();
+    preCheckinError.hidden = true;
+
+    if (!ticket) {
+      preCheckinError.textContent = "Please enter your ticket number.";
+      preCheckinError.hidden = false;
+      return;
+    }
+
+    preCheckinSearchBtn.disabled = true;
+    preCheckinSearchBtn.textContent = "Looking up...";
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`/api/ticket-lookup?ticket=${encodeURIComponent(ticket)}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) throw new Error("Lookup failed");
+      const data = await res.json();
+
+      if (data.found && data.customer) {
+        const assignment = getDoorAssignment(data.customer);
+        doorInstruction.textContent = assignment;
+        etNumberEl.textContent = `ET# ${data.etNumber || ticket}`;
+        rnNumberEl.textContent = data.loadNo ? `RN# ${data.loadNo}` : "RN# Not provided";
+        identityQr.style.display = "none";
+        identityQrLink.style.display = "none";
+        const qrHelp = document.querySelector(".qr-help");
+        if (qrHelp) qrHelp.style.display = "none";
+        completionDetails.textContent = "Pre-checked in ticket found. Please proceed to your assigned door.";
+        showScreen(5);
+      } else {
+        preCheckinError.textContent = data.error || "Ticket not found. Please check the number and try again.";
+        preCheckinError.hidden = false;
+      }
+    } catch {
+      preCheckinError.textContent = "Could not look up the ticket. Please try again.";
+      preCheckinError.hidden = false;
+    } finally {
+      preCheckinSearchBtn.disabled = false;
+      preCheckinSearchBtn.textContent = "Look Up Ticket";
+    }
+  });
+}
+
 function showScreen(index) {
   clearActionError();
   currentScreen = index;

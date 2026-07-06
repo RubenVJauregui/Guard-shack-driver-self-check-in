@@ -45,6 +45,15 @@
               <div class="logo">item</div>
               <p>Driver Portal</p>
             </div>
+            <button type="button" id="preCheckedInBtn" class="pre-checkin-button">Already Pre-Checked In</button>
+            <div id="preCheckinLookup" class="pre-checkin-lookup" hidden>
+              <label>
+                Enter your ticket number
+                <input id="preCheckinTicket" type="text" placeholder="ET number or ticket #" />
+              </label>
+              <p class="field-error" id="preCheckinError" hidden></p>
+              <button type="button" id="preCheckinSearchBtn">Look Up Ticket</button>
+            </div>
             <label>
               Login by
               <select id="loginMode" name="loginMode">
