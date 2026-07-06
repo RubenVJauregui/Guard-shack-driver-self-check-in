@@ -1469,10 +1469,41 @@ async function lookupStagedDoor(loadId, authHeader) {
   return { ...result, loadId, inventoryCount: inventoryRows.length, locationCount: locations.length };
 }
 
-function fetchWiseOperators(authHeader) {
+async function fetchWiseOperators(authHeader) {
+  const allRows = [];
+  const pageSize = 200;
+  for (let currentPage = 1; currentPage <= 10; currentPage += 1) {
+    const pageRows = await fetchWiseOperatorsPage(authHeader, currentPage, pageSize);
+    allRows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+  }
+  const seen = new Set();
+  const operators = allRows
+    .filter((u) => {
+      const status = String(u.status || u.userStatus || u.accountStatus || "").toUpperCase();
+      return !status || status === "ACTIVE" || status === "ENABLE" || status === "ENABLED";
+    })
+    .map((u) => {
+      const id = String(u.userId || u.id || u.user_id || "");
+      const fullName = u.fullName || u.displayName || [u.firstName, u.lastName].filter(Boolean).join(" ") || "";
+      const username = u.userName || u.name || u.username || "";
+      const name = fullName || username;
+      return { id, name, userName: username, fullName, email: u.email || "" };
+    })
+    .filter((o) => {
+      if (!o.id || !o.name || seen.has(o.id)) return false;
+      seen.add(o.id);
+      return true;
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  console.log(`[WISE users] Found ${operators.length} active Lincoln users`);
+  return operators;
+}
+
+function fetchWiseOperatorsPage(authHeader, currentPage, pageSize) {
   return new Promise((resolve) => {
     const searchUrl = new URL(`${WMS_BASE_URL}/wms-bam/user/facility/search-by-paging`);
-    const postBody = JSON.stringify({ facilityIds: [WMS_FACILITY_ID], currentPage: 1, pageSize: 100 });
+    const postBody = JSON.stringify({ facilityIds: [WMS_FACILITY_ID], currentPage, pageNo: currentPage, pageSize });
     const mod = searchUrl.protocol === "https:" ? https : http;
     const req = mod.request(searchUrl, {
       method: "POST",
@@ -1492,27 +1523,21 @@ function fetchWiseOperators(authHeader) {
       resHttp.on("end", () => {
         try {
           const parsed = JSON.parse(body);
-          const list = parsed?.data?.list || parsed?.data || [];
-          const rows = Array.isArray(list) ? list : [];
-          const operators = rows.map((u) => ({
-            id: u.userId || u.id || u.user_id || "",
-            name: u.userName || u.name || u.displayName || [u.firstName, u.lastName].filter(Boolean).join(" ") || "",
-            email: u.email || ""
-          })).filter((o) => o.id && o.name);
-          console.log(`[WISE operators] Found ${operators.length} Lincoln operators`);
-          resolve(operators);
+          const raw = parsed?.data?.list || parsed?.data?.records || parsed?.data?.rows || parsed?.data || [];
+          const rows = Array.isArray(raw) ? raw : [];
+          resolve(rows);
         } catch (err) {
-          console.log(`[WISE operators] parse error: ${err.message}`);
+          console.log(`[WISE users] parse error: ${err.message}`);
           resolve([]);
         }
       });
     });
     req.on("error", (err) => {
-      console.log(`[WISE operators] network error: ${err.message}`);
+      console.log(`[WISE users] network error: ${err.message}`);
       resolve([]);
     });
     req.on("timeout", () => {
-      console.log(`[WISE operators] timeout`);
+      console.log(`[WISE users] timeout`);
       req.destroy();
       resolve([]);
     });
