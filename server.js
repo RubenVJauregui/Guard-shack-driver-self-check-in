@@ -18,7 +18,7 @@ const WMS_USERNAME = process.env.WMS_USERNAME || "";
 const WMS_PASSWORD_B64 = process.env.WMS_PASSWORD_B64 || "";
 const WMS_PASSWORD_RAW = process.env.WMS_PASSWORD || "";
 const WMS_TENANT_ID = process.env.WMS_TENANT_ID || "LT";
-const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F22";
+const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F1";
 const YMS_BASE_URL = process.env.YMS_BASE_URL || "https://traffic.item.com/api/yms";
 const TIMEZONE = process.env.TIMEZONE || "America/Los_Angeles";
 const OPERATOR_NOTIFICATION_RECIPIENT = process.env.OPERATOR_NOTIFICATION_RECIPIENT || "Juan.barragan@unisco.com";
@@ -44,7 +44,7 @@ function formatNotificationLines(etNumber, payload) {
   const equipment = payload.equipmentInfo || {};
   const trip = payload.tripInfo || {};
   return [
-    `A driver has completed check-in at Lincoln (LT_F22).`,
+    `A driver has completed check-in at Valley View (LT_F1).`,
     ``,
     `ET#: ${etNumber || ""}`,
     `Type: ${trip.direction === "inbound" ? "Inbound receipt" : "Outbound / yard task"}`,
@@ -71,7 +71,7 @@ async function sendCheckinEmailNotification(etNumber, payload) {
     return { sent: false, reason: "smtp_not_configured" };
   }
   const trip = payload.tripInfo || {};
-  const subjectParts = ["Lincoln Driver Check-In", etNumber];
+  const subjectParts = ["Valley View Driver Check-In", etNumber];
   if (trip.receiptId || trip.poNo || trip.loadNo) subjectParts.push(trip.receiptId || trip.poNo || trip.loadNo);
   const subject = subjectParts.filter(Boolean).join(" - ");
   const text = formatNotificationLines(etNumber, payload).join("\n");
@@ -124,9 +124,9 @@ async function sendStoredCheckinEmailNotification(record = {}) {
   const summary = pickupSummaryFromRecord(record);
   const driverName = record.driverName || record.driver_name || [record.driverFirstName, record.driverLastName].filter(Boolean).join(" ");
   const etNumber = record.etNumber || record.et_number || "";
-  const subject = ["Lincoln Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
+  const subject = ["Valley View Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
   const lines = [
-    "A driver has completed check-in at Lincoln (LT_F22).",
+    "A driver has completed check-in at Valley View (LT_F1).",
     "",
     `Check-in link: ${checkinLink}`,
     `Dashboard: ${dashboardLink}`,
