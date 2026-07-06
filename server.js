@@ -832,6 +832,79 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/wise-operators") {
+    try {
+      const wmsToken = await getWmsBearerToken();
+      if (!wmsToken) {
+        sendJson(res, { operators: [], error: "WMS authentication unavailable" });
+        return;
+      }
+      const operators = await fetchWiseOperators(`Bearer ${wmsToken}`);
+      sendJson(res, { operators });
+    } catch (err) {
+      console.log(`[WISE operators] error: ${err.message}`);
+      sendJson(res, { operators: [], error: "Operator lookup failed" });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname.match(/^\/api\/checkins\/(\d+)\/load-task$/)) {
+    const id = Number(url.pathname.match(/\/api\/checkins\/(\d+)\/load-task/)[1]);
+    try {
+      const body = await readBody(req);
+      const payload = JSON.parse(body || "{}");
+      const record = await db.getCheckinById(id);
+      if (!record) { sendJson(res, { created: false, error: "Check-in not found or not a Lincoln record" }, 404); return; }
+      if (record.direction === "inbound") {
+        await db.updateLoadTask(id, { loadTaskStatus: "not_applicable", loadTaskError: "Load task generation is for outbound loads only. Inbound receipts are processed through the receiving workflow." });
+        sendJson(res, { created: false, error: "Load task generation is for outbound loads only. Inbound receipts are processed through the receiving workflow." });
+        return;
+      }
+      const operatorId = payload.operatorId;
+      const operatorName = payload.operatorName || "";
+      if (!operatorId) { sendJson(res, { created: false, error: "Please select a WISE operator before generating a load task." }, 400); return; }
+      const loadId = record.load_id || record.wms_load_no || "";
+      if (!loadId) {
+        await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskStatus: "blocked", loadTaskError: "No WMS load ID available for this check-in. A load task requires a confirmed load ID from WMS." });
+        sendJson(res, { created: false, error: "No WMS load ID available for this check-in. A load task requires a confirmed load ID from WMS." });
+        return;
+      }
+      const dockId = payload.dockId || record.dock_id || "";
+      if (!dockId) {
+        await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskStatus: "blocked", loadTaskError: "No dock ID available. A dock assignment is required to generate a load task." });
+        sendJson(res, { created: false, error: "No dock ID available. A dock assignment is required to generate a load task." });
+        return;
+      }
+      const wmsToken = await getWmsBearerToken();
+      if (!wmsToken) {
+        sendJson(res, { created: false, error: "WMS authentication unavailable. Cannot create load task." });
+        return;
+      }
+      const entryTask = (record.entry_task || "").toLowerCase();
+      const loadMode = entryTask.includes("preload") ? "PRE_LOAD" : "LIVE_LOAD";
+      const taskResult = await createWmsLoadTask(`Bearer ${wmsToken}`, {
+        dockId,
+        loadIds: [loadId],
+        assigneeUserId: operatorId,
+        entryId: record.et_number || "",
+        loadMode,
+        equipmentType: record.equipment_type || "",
+        note: `Lincoln check-in #${id}. Driver: ${record.driver_name || ""}. ET: ${record.et_number || ""}.`
+      });
+      if (taskResult.taskId) {
+        await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskId: taskResult.taskId, loadTaskStatus: "created", loadTaskError: null, dockId });
+        sendJson(res, { created: true, taskId: taskResult.taskId, message: "Load task created and assigned." });
+      } else {
+        await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskStatus: "failed", loadTaskError: taskResult.error || "Task creation failed" });
+        sendJson(res, { created: false, error: taskResult.error || "Load task creation failed." });
+      }
+    } catch (err) {
+      console.log(`[Load task] error: ${err.message}`);
+      sendJson(res, { created: false, error: "Load task creation failed." }, 500);
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/ticket-lookup") {
     const ticket = (url.searchParams.get("ticket") || "").trim();
     if (!ticket) {
@@ -1394,4 +1467,116 @@ async function lookupStagedDoor(loadId, authHeader) {
   const result = resolveDoorFromStagedLocation(locations, inventoryRows);
   console.log(`[Staged door] loadId=${loadId} -> source=${result?.source}, door=${result?.door || "none"}, location=${result?.locationName || ""}`);
   return { ...result, loadId, inventoryCount: inventoryRows.length, locationCount: locations.length };
+}
+
+function fetchWiseOperators(authHeader) {
+  return new Promise((resolve) => {
+    const searchUrl = new URL(`${WMS_BASE_URL}/wms-bam/user/facility/search-by-paging`);
+    const postBody = JSON.stringify({ facilityIds: [WMS_FACILITY_ID], currentPage: 1, pageSize: 100 });
+    const mod = searchUrl.protocol === "https:" ? https : http;
+    const req = mod.request(searchUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "x-tenant-id": WMS_TENANT_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "item-time-zone": TIMEZONE,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": Buffer.byteLength(postBody)
+      },
+      timeout: 8000
+    }, (resHttp) => {
+      let body = "";
+      resHttp.on("data", (chunk) => { body += chunk; });
+      resHttp.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          const list = parsed?.data?.list || parsed?.data || [];
+          const rows = Array.isArray(list) ? list : [];
+          const operators = rows.map((u) => ({
+            id: u.userId || u.id || u.user_id || "",
+            name: u.userName || u.name || u.displayName || [u.firstName, u.lastName].filter(Boolean).join(" ") || "",
+            email: u.email || ""
+          })).filter((o) => o.id && o.name);
+          console.log(`[WISE operators] Found ${operators.length} Lincoln operators`);
+          resolve(operators);
+        } catch (err) {
+          console.log(`[WISE operators] parse error: ${err.message}`);
+          resolve([]);
+        }
+      });
+    });
+    req.on("error", (err) => {
+      console.log(`[WISE operators] network error: ${err.message}`);
+      resolve([]);
+    });
+    req.on("timeout", () => {
+      console.log(`[WISE operators] timeout`);
+      req.destroy();
+      resolve([]);
+    });
+    req.write(postBody);
+    req.end();
+  });
+}
+
+function createWmsLoadTask(authHeader, params) {
+  return new Promise((resolve) => {
+    const taskUrl = new URL(`${WMS_BASE_URL}/wms/outbound/load-task/create`);
+    const postBody = JSON.stringify({
+      dockId: params.dockId,
+      loadIds: params.loadIds,
+      assigneeUserId: params.assigneeUserId,
+      entryId: params.entryId || undefined,
+      loadMode: params.loadMode || "LIVE_LOAD",
+      equipmentType: params.equipmentType || undefined,
+      note: params.note || ""
+    });
+    const mod = taskUrl.protocol === "https:" ? https : http;
+    const req = mod.request(taskUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "x-tenant-id": WMS_TENANT_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "item-time-zone": TIMEZONE,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": Buffer.byteLength(postBody)
+      },
+      timeout: 10000
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          const taskId = parsed?.data?.id || parsed?.data || "";
+          if (taskId && res.statusCode < 300) {
+            console.log(`[Load task] Created: ${taskId}`);
+            resolve({ taskId: String(taskId) });
+          } else {
+            const errMsg = parsed?.msg || parsed?.message || `Status ${res.statusCode}`;
+            console.log(`[Load task] Creation failed: ${errMsg}`);
+            resolve({ taskId: null, error: errMsg });
+          }
+        } catch (err) {
+          console.log(`[Load task] parse error: ${err.message}`);
+          resolve({ taskId: null, error: "Response parse error" });
+        }
+      });
+    });
+    req.on("error", (err) => {
+      console.log(`[Load task] network error: ${err.message}`);
+      resolve({ taskId: null, error: "Network error" });
+    });
+    req.on("timeout", () => {
+      console.log(`[Load task] timeout`);
+      req.destroy();
+      resolve({ taskId: null, error: "Request timeout" });
+    });
+    req.write(postBody);
+    req.end();
+  });
 }

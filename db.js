@@ -53,7 +53,13 @@ async function initDb() {
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS assignment_notes TEXT",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS updated_by TEXT",
-    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS update_notes TEXT"
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS update_notes TEXT",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS wise_operator_id TEXT",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS wise_operator_name TEXT",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS load_task_id TEXT",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS load_task_status TEXT",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS load_task_error TEXT",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS dock_id TEXT"
   ];
   for (const sql of migrations) await p.query(sql);
   await p.query('CREATE INDEX IF NOT EXISTS idx_checkins_created_at ON checkins(created_at DESC)');
@@ -171,4 +177,21 @@ async function updateAssignment(id, data) {
   return result.rows[0] || null;
 }
 
-module.exports={initDb,insertCheckin,queryCheckins,getSummary,getCheckinById,updateCheckin,loadTypeGroup,EDITABLE_FIELDS,updateAssignment};
+async function updateLoadTask(id, data) {
+  const p = getPool(); if (!p) return null;
+  const sets = []; const params = [];
+  if (data.wiseOperatorId !== undefined) { params.push(data.wiseOperatorId || null); sets.push(`wise_operator_id=$${params.length}`); }
+  if (data.wiseOperatorName !== undefined) { params.push(data.wiseOperatorName || null); sets.push(`wise_operator_name=$${params.length}`); }
+  if (data.loadTaskId !== undefined) { params.push(data.loadTaskId || null); sets.push(`load_task_id=$${params.length}`); }
+  if (data.loadTaskStatus !== undefined) { params.push(data.loadTaskStatus || null); sets.push(`load_task_status=$${params.length}`); }
+  if (data.loadTaskError !== undefined) { params.push(data.loadTaskError || null); sets.push(`load_task_error=$${params.length}`); }
+  if (data.dockId !== undefined) { params.push(data.dockId || null); sets.push(`dock_id=$${params.length}`); }
+  if (!sets.length) return null;
+  sets.push('updated_at=NOW()');
+  params.push(id);
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F22' RETURNING *`;
+  const result = await p.query(sql, params);
+  return result.rows[0] || null;
+}
+
+module.exports={initDb,insertCheckin,queryCheckins,getSummary,getCheckinById,updateCheckin,loadTypeGroup,EDITABLE_FIELDS,updateAssignment,updateLoadTask};

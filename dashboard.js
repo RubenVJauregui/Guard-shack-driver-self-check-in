@@ -16,4 +16,41 @@ function detail(i){currentRecord=records[i];showView();$('detail').showModal()}
 async function saveEdit(){const els=$('editBody').querySelectorAll('[data-field]');const fields={};for(const el of els){const key=el.dataset.field;if(el.value!==(currentRecord[key]||''))fields[key]=el.value}if(!Object.keys(fields).length){showStatus('No changes detected.','error');return}$('saveBtn').disabled=true;try{const resp=await fetch(`/api/checkins/${currentRecord.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields,updatedBy:'ops-dashboard',updateNotes:$('editNotes').value})});const result=await resp.json();if(!resp.ok){showStatus(result.error||'Save failed.','error');return}showStatus(result.localUpdated?(result.wiseUpdated?'Saved and WISE updated.':`Local record saved. ${result.message||'WISE update not confirmed.'}`):'Update failed.',result.localUpdated&&result.wiseUpdated?'success':(result.localUpdated?'partial':'error'));if(result.record)currentRecord=result.record;load()}catch{showStatus('Network error. Please try again.','error')}finally{$('saveBtn').disabled=false}}
 function showStatus(msg,type){const el=$('editStatus');el.hidden=false;el.className='editStatus '+type;el.textContent=msg}
 $('saveAssignment').onclick=async()=>{if(!currentRecord)return;const body={assignedTo:$('asgTo').value.trim(),assignmentStatus:$('asgStatus').value,assignmentNotes:$('asgNotes').value.trim(),assignedBy:'dashboard'};$('saveAssignment').disabled=true;$('asgMsg').textContent='Saving...';try{const res=await fetch(`/api/checkins/${currentRecord.id}/assignment`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await res.json();if(data.updated){$('asgMsg').textContent='Assignment saved.';$('asgMsg').style.color='#4ade80';Object.assign(currentRecord,{assigned_to:body.assignedTo,assignment_status:body.assignmentStatus,assignment_notes:body.assignmentNotes});load()}else{$('asgMsg').textContent=data.error||'Update failed.';$('asgMsg').style.color='#f87171'}}catch{$('asgMsg').textContent='Network error.';$('asgMsg').style.color='#f87171'}$('saveAssignment').disabled=false};
-$('editBtn').onclick=()=>showEdit();$('cancelBtn').onclick=()=>showView();$('saveBtn').onclick=()=>saveEdit();$('apply').onclick=()=>{page=1;load()};$('clear').onclick=()=>{fields.forEach(f=>$(f).value='');page=1;load()};$('prev').onclick=()=>{if(page>1){page--;load()}};$('next').onclick=()=>{if(page<Math.ceil(total/limit)){page++;load()}};$('export').onclick=()=>{location.href='/api/checkins/export?'+params({page:1,limit:10000})};$('close').onclick=()=>{$('detail').close();showView()};load();
+$('editBtn').onclick=()=>showEdit();$('cancelBtn').onclick=()=>showView();$('saveBtn').onclick=()=>saveEdit();$('apply').onclick=()=>{page=1;load()};$('clear').onclick=()=>{fields.forEach(f=>$(f).value='');page=1;load()};$('prev').onclick=()=>{if(page>1){page--;load()}};$('next').onclick=()=>{if(page<Math.ceil(total/limit)){page++;load()}};$('export').onclick=()=>{location.href='/api/checkins/export?'+params({page:1,limit:10000})};$('close').onclick=()=>{$('detail').close();showView()};
+
+let wiseOperators=[];
+async function loadOperators(){
+  try{const res=await fetch('/api/wise-operators');const data=await res.json();wiseOperators=data.operators||[];const sel=$('wiseOperator');sel.innerHTML=wiseOperators.length?'<option value="">Select operator...</option>'+wiseOperators.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}${o.email?' ('+esc(o.email)+')':''}</option>`).join(''):'<option value="">No operators available</option>'}catch{$('wiseOperator').innerHTML='<option value="">Operator list unavailable</option>'}
+}
+function fillTaskPanel(r){
+  $('taskDockId').value=r.dock_id||'';
+  const sel=$('wiseOperator');
+  if(r.wise_operator_id){const exists=[...sel.options].some(o=>o.value===r.wise_operator_id);if(!exists&&r.wise_operator_name){const opt=document.createElement('option');opt.value=r.wise_operator_id;opt.textContent=r.wise_operator_name;sel.appendChild(opt)}sel.value=r.wise_operator_id}else{sel.value=''}
+  let info='';
+  if(r.load_task_id)info+=`Task ID: ${r.load_task_id}. `;
+  if(r.load_task_status)info+=`Status: ${r.load_task_status}. `;
+  if(r.load_task_error)info+=r.load_task_error;
+  if(r.direction==='inbound')info='Load tasks are for outbound loads only. Inbound receipts use the receiving workflow.';
+  $('taskInfo').textContent=info;$('taskMsg').textContent='';
+}
+
+$('generateTask').onclick=async()=>{
+  if(!currentRecord)return;
+  const operatorId=$('wiseOperator').value;
+  const operatorName=$('wiseOperator').selectedOptions[0]?.textContent||'';
+  const dockId=$('taskDockId').value.trim();
+  if(!operatorId){$('taskMsg').textContent='Please select an operator.';$('taskMsg').style.color='#f87171';return}
+  $('generateTask').disabled=true;$('taskMsg').textContent='Creating load task...';$('taskMsg').style.color='#a7adbd';
+  try{
+    const res=await fetch(`/api/checkins/${currentRecord.id}/load-task`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operatorId,operatorName,dockId})});
+    const data=await res.json();
+    if(data.created){$('taskMsg').textContent=data.message||'Load task created.';$('taskMsg').style.color='#4ade80';currentRecord.load_task_id=data.taskId;currentRecord.load_task_status='created';currentRecord.wise_operator_id=operatorId;currentRecord.wise_operator_name=operatorName;load()}
+    else{$('taskMsg').textContent=data.error||'Task creation failed.';$('taskMsg').style.color='#f87171';if(data.error)currentRecord.load_task_error=data.error}
+    fillTaskPanel(currentRecord);
+  }catch{$('taskMsg').textContent='Network error.';$('taskMsg').style.color='#f87171'}
+  $('generateTask').disabled=false;
+};
+
+const origShowView=showView;
+showView=function(){origShowView();if(currentRecord)fillTaskPanel(currentRecord)};
+loadOperators();load();
