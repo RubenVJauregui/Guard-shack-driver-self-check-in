@@ -1,5 +1,5 @@
 // Door assignment rules for Fontana facility (LT_ORG-7759)
-// Customer: SharkNinja / SharkNinja Sales Company -> "Go to the door between dock 2"
+// Customer: SharkNinja / SharkNinja Sales Company -> "Go to the door between docks 165 & 166"
 const sharkNinjaCustomers = [
   "SHARKNINJA",
   "SHARKNINJA SALES COMPANY",
@@ -10,7 +10,7 @@ const sharkNinjaCustomers = [
 ];
 
 // Default door instruction for Fontana when no staging location or customer match
-const FONTANA_DEFAULT_DOOR = "Go to the door between dock 2";
+const VALLEY_VIEW_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
 
 const rnToCustomerMap = {};
 
@@ -94,7 +94,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between dock 2";
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -116,7 +116,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showActionError("Go to the door between dock 2 and see the employee");
+      showActionError("Go to the door between docks 165 & 166 and see the employee");
     }
     return;
   }
@@ -664,15 +664,15 @@ async function saveIdentityRecord(identityRecord) {
 
 function getDoorAssignment(customerValue) {
   const normalized = normalize(customerValue);
-  if (!normalized) return FONTANA_DEFAULT_DOOR;
+  if (!normalized) return VALLEY_VIEW_DEFAULT_DOOR;
   if (sharkNinjaCustomers.some((customer) => normalize(customer) === normalized)) {
-    return "Go to the door between dock 2";
+    return "Go to the door between docks 165 & 166";
   }
   // Partial match: customer name contains "SHARKNINJA" or "SHARK NINJA"
   if (normalized.includes("SHARKNINJA") || normalized.includes("SHARK NINJA")) {
-    return "Go to the door between dock 2";
+    return "Go to the door between docks 165 & 166";
   }
-  return FONTANA_DEFAULT_DOOR;
+  return VALLEY_VIEW_DEFAULT_DOOR;
 }
 
 async function resolveStagedDoor(loadId) {
