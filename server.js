@@ -824,6 +824,14 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         console.log(`[Email notification] Stored check-in email failed: ${err.message}`);
       }
       const id = await db.insertCheckin(record);
+
+      // --- Automatic post-check-in workflow (non-blocking) ---
+      if (id) {
+        setImmediate(() => autoPostCheckinWorkflow(id, record).catch(err => {
+          console.log(`[Auto workflow] Unhandled error for checkin #${id}: ${err.message}`);
+        }));
+      }
+
       sendJson(res, { saved: Boolean(id), id, emailNotificationSent: Boolean(emailNotification.sent) });
     } catch (err) {
       console.log(`[DB] checkin save endpoint error: ${err.message}`);
@@ -1604,4 +1612,156 @@ function createWmsLoadTask(authHeader, params) {
     req.write(postBody);
     req.end();
   });
+}
+
+// --- Automatic post-check-in workflow ---
+// For outbound check-ins: create WMS load task assigned to RMorales, then send ops email.
+const AUTO_OPERATOR_ID = "1853651235951439312";
+const AUTO_OPERATOR_NAME = "Ryan Morales";
+const OPS_EMAIL_RECIPIENT = "opsteam.lincoln@unisco.com";
+
+async function autoPostCheckinWorkflow(checkinId, record) {
+  const direction = record.direction || "";
+  const isOutbound = direction !== "inbound";
+  let loadTaskResult = { status: "not_applicable", taskId: null, error: null };
+
+  if (isOutbound) {
+    loadTaskResult = await autoCreateLoadTask(checkinId, record);
+  } else {
+    loadTaskResult = { status: "not_applicable", taskId: null, error: "Inbound receipt — load task not applicable." };
+    try {
+      await db.updateLoadTask(checkinId, { loadTaskStatus: "not_applicable", loadTaskError: loadTaskResult.error });
+    } catch (e) { console.log(`[Auto workflow] DB update failed: ${e.message}`); }
+  }
+
+  await autoSendOpsEmail(checkinId, record, loadTaskResult);
+}
+
+async function autoCreateLoadTask(checkinId, record) {
+  const loadId = record.loadId || record.load_id || record.wmsLoadNo || record.wms_load_no || "";
+  if (!loadId) {
+    const msg = "No WMS load ID available. Automatic load task creation requires a confirmed load ID.";
+    console.log(`[Auto load task] checkin #${checkinId}: ${msg}`);
+    try { await db.updateLoadTask(checkinId, { wiseOperatorId: AUTO_OPERATOR_ID, wiseOperatorName: AUTO_OPERATOR_NAME, loadTaskStatus: "blocked", loadTaskError: msg }); } catch (e) {}
+    return { status: "blocked", taskId: null, error: msg };
+  }
+
+  const dockId = record.dockId || record.dock_id || "";
+  if (!dockId) {
+    const msg = "No dock ID available. A numeric dock/location ID is required for load task creation. Door assignment text alone is not sufficient.";
+    console.log(`[Auto load task] checkin #${checkinId}: ${msg}`);
+    try { await db.updateLoadTask(checkinId, { wiseOperatorId: AUTO_OPERATOR_ID, wiseOperatorName: AUTO_OPERATOR_NAME, loadTaskStatus: "blocked", loadTaskError: msg }); } catch (e) {}
+    return { status: "blocked", taskId: null, error: msg };
+  }
+
+  let wmsToken;
+  try { wmsToken = await getWmsBearerToken(); } catch (e) {}
+  if (!wmsToken) {
+    const msg = "WMS authentication unavailable. Load task will need to be created manually.";
+    console.log(`[Auto load task] checkin #${checkinId}: ${msg}`);
+    try { await db.updateLoadTask(checkinId, { wiseOperatorId: AUTO_OPERATOR_ID, wiseOperatorName: AUTO_OPERATOR_NAME, loadTaskStatus: "blocked", loadTaskError: msg }); } catch (e) {}
+    return { status: "blocked", taskId: null, error: msg };
+  }
+
+  const entryTask = (record.entryTask || record.entry_task || "").toLowerCase();
+  const loadMode = entryTask.includes("preload") ? "PRE_LOAD" : "LIVE_LOAD";
+  const driverName = record.driverName || record.driver_name || "";
+  const etNumber = record.etNumber || record.et_number || "";
+
+  console.log(`[Auto load task] checkin #${checkinId}: Creating load task for loadId=${loadId}, dockId=${dockId}, operator=${AUTO_OPERATOR_NAME}`);
+  const taskResult = await createWmsLoadTask(`Bearer ${wmsToken}`, {
+    dockId,
+    loadIds: [loadId],
+    assigneeUserId: AUTO_OPERATOR_ID,
+    entryId: etNumber,
+    loadMode,
+    equipmentType: record.equipmentType || record.equipment_type || "",
+    note: `Auto-assigned Lincoln check-in #${checkinId}. Driver: ${driverName}. ET: ${etNumber}.`
+  });
+
+  if (taskResult.taskId) {
+    console.log(`[Auto load task] checkin #${checkinId}: Task created successfully: ${taskResult.taskId}`);
+    try { await db.updateLoadTask(checkinId, { wiseOperatorId: AUTO_OPERATOR_ID, wiseOperatorName: AUTO_OPERATOR_NAME, loadTaskId: taskResult.taskId, loadTaskStatus: "created", loadTaskError: null, dockId }); } catch (e) {}
+    return { status: "created", taskId: taskResult.taskId, error: null };
+  } else {
+    const errMsg = taskResult.error || "Task creation failed";
+    console.log(`[Auto load task] checkin #${checkinId}: Task creation failed: ${errMsg}`);
+    try { await db.updateLoadTask(checkinId, { wiseOperatorId: AUTO_OPERATOR_ID, wiseOperatorName: AUTO_OPERATOR_NAME, loadTaskStatus: "failed", loadTaskError: errMsg, dockId }); } catch (e) {}
+    return { status: "failed", taskId: null, error: errMsg };
+  }
+}
+
+async function autoSendOpsEmail(checkinId, record, loadTaskResult) {
+  if (!isEmailEnabled()) {
+    console.log(`[Auto ops email] SMTP not configured; ops email for checkin #${checkinId} not sent.`);
+    return;
+  }
+
+  const driverName = record.driverName || record.driver_name || [record.driverFirstName, record.driverLastName].filter(Boolean).join(" ") || "";
+  const etNumber = record.etNumber || record.et_number || "";
+  const doorAssignment = record.doorAssignment || record.door_assignment || "Not assigned";
+  const direction = record.direction || "outbound";
+  const customer = record.customer || "";
+  const loadNo = record.loadNo || record.load_no || record.wmsLoadNo || record.wms_load_no || "";
+  const referenceNo = record.referenceNo || record.reference_no || "";
+  const poNo = record.poNo || record.po_no || "";
+  const receiptId = record.receiptId || record.receipt_id || "";
+  const carrier = record.carrierName || record.carrier_name || "";
+  const equipment = record.equipmentNo || record.equipment_no || "";
+  const entryTask = record.entryTask || record.entry_task || "";
+  const phone = record.driverPhone || record.driver_phone || "";
+
+  let taskLine;
+  if (loadTaskResult.status === "created") {
+    taskLine = `Load task created and assigned to ${AUTO_OPERATOR_NAME}. Task ID: ${loadTaskResult.taskId}`;
+  } else if (loadTaskResult.status === "not_applicable") {
+    taskLine = `Load task: Not applicable (${loadTaskResult.error || "inbound"})`;
+  } else {
+    taskLine = `Load task: ${loadTaskResult.status}. ${loadTaskResult.error || ""}`;
+  }
+
+  const subject = `Lincoln Check-In ${etNumber ? "ET " + etNumber : "#" + checkinId} - ${driverName || "Driver"} - ${direction}`;
+  const lines = [
+    `Driver check-in completed at Lincoln (LT_F22).`,
+    ``,
+    `ET#: ${etNumber || "N/A"}`,
+    `Direction: ${direction}`,
+    `Entry task: ${entryTask}`,
+    `Dock door: ${doorAssignment}`,
+    ``,
+    `Driver: ${driverName}`,
+    `Phone: ${phone}`,
+    `Carrier: ${carrier}`,
+    `Equipment: ${equipment}`,
+    ``,
+    `Customer: ${customer}`,
+    `Load / RN: ${loadNo || receiptId || "N/A"}`,
+    `PO: ${poNo || "N/A"}`,
+    `Reference: ${referenceNo || "N/A"}`,
+    ``,
+    `--- Task Assignment ---`,
+    taskLine,
+    `Assigned operator: ${AUTO_OPERATOR_NAME}`,
+    ``,
+    `Dashboard: ${process.env.COOLIFY_URL || "https://driver-checkin-4178-49c078.coolify.item.pub"}/dashboard.html`,
+    `Time: ${new Date().toLocaleString("en-US", { timeZone: TIMEZONE })} ${TIMEZONE}`
+  ];
+
+  const text = lines.join("\n");
+  const html = `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
+    <h2 style="margin:0 0 8px">Lincoln Driver Check-In</h2>
+    <pre style="white-space:pre-wrap;font-family:Arial,sans-serif">${escapeHtmlServer(text)}</pre>
+  </div>`;
+
+  const recipients = new Set(ALERT_RECIPIENTS.map(e => e.toLowerCase()));
+  recipients.add(OPS_EMAIL_RECIPIENT.toLowerCase());
+  const toList = [...recipients];
+
+  try {
+    const transporter = nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE, auth: { user: SMTP_USER, pass: SMTP_PASS } });
+    const info = await transporter.sendMail({ from: SMTP_FROM, to: toList, subject, text, html });
+    console.log(`[Auto ops email] Sent for checkin #${checkinId} to ${toList.join(", ")} messageId=${info.messageId || ""}`);
+  } catch (err) {
+    console.log(`[Auto ops email] Send failed for checkin #${checkinId}: ${err.message}`);
+  }
 }
