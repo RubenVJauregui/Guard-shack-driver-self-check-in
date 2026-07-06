@@ -1,16 +1,42 @@
-// Door assignment rules for Fontana facility (LT_ORG-7759)
-// Customer: SharkNinja / SharkNinja Sales Company -> "Go to the door between docks 165 & 166"
-const sharkNinjaCustomers = [
-  "SHARKNINJA",
-  "SHARKNINJA SALES COMPANY",
-  "SHARK NINJA",
-  "SHARK NINJA SALES COMPANY",
-  "SHARKNINJA SALES",
-  "SHARKNINJA INC"
+// Door assignment rules from "Door asignment.xlsx" only
+// Column B (cell B1): "Door between docks 165 & 166"
+const doorBetween165_166Customers = [
+  "RST",
+  "KING'S HAWAIIAN",
+  "MAMMA CHIA",
+  "MELOGRANO DRINKS LLC",
+  "MUSE ORGANIC LLC",
+  "NATURAL DECADENCE LLC",
+  "ORGAIN, LLC",
+  "OVERSEAS FOOD TRADING",
+  "POMPEIAN INC",
+  "PREFERRED BRANDS",
+  "RECOVERY SPORTS LLC",
+  "RISE BEVERAGES LLC DBA",
+  "SANS WINE & SPIRITS",
+  "UPTIME ENERGY INC",
+  "WATER PLUS LLC",
+  "ZEN BEVERAGE LLC",
+  "TCL - Solar Cell"
 ];
 
-// Default door instruction for Fontana when no staging location or customer match
-const VALLEY_VIEW_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
+// Column D (cell D1): "Door 45"
+const door45Customers = [
+  "ALL MARKET INC / VITA COCO",
+  "COME READY FOODS",
+  "HINT INC",
+  "SOURCE86",
+  "KACE TEA LLC",
+  "PLEASS GLOBAL LIMITED",
+  "PREFERRED BRANDS",
+  "RITUAL BEVERAGE COMPANY",
+  "ROAR BEVERAGES INC",
+  "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
+  "SPLENDOR WATER LLC",
+  "WISMETTAC ASIAN FOODS"
+];
+
+const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
 
 const rnToCustomerMap = {};
 
@@ -44,7 +70,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...sharkNinjaCustomers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...doorBetween165_166Customers, ...door45Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -94,7 +120,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
+const FALLBACK_AFTER_MAX_ATTEMPTS = EXCEL_DEFAULT_DOOR;
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -663,43 +689,35 @@ async function saveIdentityRecord(identityRecord) {
 }
 
 function getDoorAssignment(customerValue) {
-  const normalized = normalize(customerValue);
-  if (!normalized) return VALLEY_VIEW_DEFAULT_DOOR;
-  if (sharkNinjaCustomers.some((customer) => normalize(customer) === normalized)) {
+  const normalized = normalizeForDoorMatch(customerValue);
+  if (!normalized) return EXCEL_DEFAULT_DOOR;
+
+  if (doorBetween165_166Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
     return "Go to the door between docks 165 & 166";
   }
-  // Partial match: customer name contains "SHARKNINJA" or "SHARK NINJA"
-  if (normalized.includes("SHARKNINJA") || normalized.includes("SHARK NINJA")) {
-    return "Go to the door between docks 165 & 166";
+  if (door45Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to Door 45";
   }
-  return VALLEY_VIEW_DEFAULT_DOOR;
+  return EXCEL_DEFAULT_DOOR;
 }
 
-async function resolveStagedDoor(loadId) {
-  if (!loadId) return null;
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(`/api/wms-staged-door?loadId=${encodeURIComponent(loadId)}`, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.door) return data;
-    return null;
-  } catch {
-    return null;
-  }
+function normalizeForDoorMatch(value = "") {
+  return String(value).trim().toUpperCase().replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-async function getDoorAssignmentWithStaging(loadId, customerValue) {
-  // Priority 1: Staged-location-based door assignment
-  const stagedResult = await resolveStagedDoor(loadId);
-  if (stagedResult && stagedResult.door) {
-    return { assignment: stagedResult.door, source: stagedResult.source, stagedLocation: stagedResult.locationName || "" };
-  }
-  // Priority 2: Customer-based Excel rules (existing behavior)
-  const assignment = getDoorAssignment(customerValue);
-  return { assignment, source: "customer_rule", stagedLocation: "" };
+function compactDoorValue(value = "") {
+  return normalizeForDoorMatch(value).replace(/\s+/g, "");
+}
+
+function isDoorCustomerMatch(normalizedCustomer, mappedCustomer) {
+  const mapped = normalizeForDoorMatch(mappedCustomer);
+  const compactCustomer = compactDoorValue(normalizedCustomer);
+  const compactMapped = compactDoorValue(mapped);
+  if (!mapped || !compactMapped) return false;
+  if (compactCustomer === compactMapped) return true;
+  if (compactMapped.length >= 8 && compactCustomer.includes(compactMapped)) return true;
+  if (compactCustomer.length >= 8 && compactMapped.includes(compactCustomer)) return true;
+  return false;
 }
 
 function normalize(value = "") {
