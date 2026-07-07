@@ -74,6 +74,7 @@ const screenTitles = [
 
 const form = document.querySelector("#checkinForm");
 const screens = [...document.querySelectorAll(".screen")];
+const completeScreen = document.querySelector(".complete-screen");
 const dots = [...document.querySelectorAll(".progress-dot")];
 const nextBtn = document.querySelector("#nextBtn");
 const backBtn = document.querySelector("#backBtn");
@@ -302,6 +303,7 @@ if (preCheckinSearchBtn) {
       const data = await res.json();
 
       if (data.found && data.customer) {
+        setYardInstructionMode(false);
         const doorResult = await getDoorAssignmentWithStaging(data.loadId || "", data.customer);
         doorInstruction.textContent = doorResult.assignment;
         etNumberEl.textContent = `ET# ${data.etNumber || ticket}`;
@@ -326,8 +328,14 @@ if (preCheckinSearchBtn) {
   });
 }
 
+function setYardInstructionMode(enabled) {
+  if (!completeScreen) return;
+  completeScreen.classList.toggle("yard-instruction-mode", Boolean(enabled));
+}
+
 function showScreen(index) {
   clearActionError();
+  if (index !== 5) setYardInstructionMode(false);
   currentScreen = index;
   screens.forEach((screen, screenIndex) => screen.classList.toggle("active", screenIndex === index));
   dots.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex <= Math.min(index, 4)));
@@ -603,6 +611,7 @@ async function completeCheckin() {
 
   // Drop Off Empty: show ET, drop-off message, hide QR
   if (isDropOffEmpty()) {
+    setYardInstructionMode(true);
     doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";
     identityQr.style.display = "none";
     identityQrLink.style.display = "none";
@@ -612,6 +621,7 @@ async function completeCheckin() {
     rnNumberEl.textContent = "";
     completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
   } else if (isDropOffFull()) {
+    setYardInstructionMode(true);
     doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";
     identityQr.style.display = "";
     identityQrLink.style.display = "";
@@ -623,6 +633,7 @@ async function completeCheckin() {
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
   } else if (isPickupEmpty()) {
+    setYardInstructionMode(true);
     doorInstruction.textContent = "Please proceed to pick up your empty";
     identityQr.style.display = "";
     identityQrLink.style.display = "";
@@ -634,6 +645,7 @@ async function completeCheckin() {
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your pickup has been recorded.`;
   } else {
+    setYardInstructionMode(false);
     doorInstruction.textContent = assignment;
     identityQr.style.display = "";
     identityQrLink.style.display = "";

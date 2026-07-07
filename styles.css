@@ -352,6 +352,37 @@ textarea:focus {
   line-height: 1.1;
 }
 
+
+.complete-screen.yard-instruction-mode {
+  padding-top: 24px;
+}
+
+.complete-screen.yard-instruction-mode .instruction-card {
+  min-height: 58vh;
+  display: grid;
+  place-items: center;
+  margin: 18px 0 20px;
+  padding: 34px 18px;
+  border: 2px solid #111111;
+  background: #ffffff;
+}
+
+.complete-screen.yard-instruction-mode .instruction-label {
+  display: none;
+}
+
+.complete-screen.yard-instruction-mode .door-instruction {
+  color: #000000;
+  font-size: clamp(38px, 10vw, 56px);
+  font-weight: 950;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.complete-screen.yard-instruction-mode .success-mark {
+  margin-bottom: 10px;
+}
+
 .qr-help {
   margin: -2px 0 12px;
   color: var(--ink);
