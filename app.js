@@ -190,8 +190,7 @@ nextBtn.addEventListener("click", async () => {
           ? lastValidatedRnResult
           : await resolveCustomerFromIdentifiers(identifiers);
         if (fallbackResult?.customer) {
-          const doorResult = await getDoorAssignmentWithStaging(fallbackResult.loadId || "", fallbackResult.customer);
-          showLargeInstructionScreen(doorResult.assignment, "Load was found in WMS, but ET could not be created. Please see the employee for assistance.");
+          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS, but ET could not be created. Please see the employee for assistance.");
         } else {
           showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "ET could not be created. Please see the employee for assistance.");
         }

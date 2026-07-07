@@ -39,8 +39,7 @@ assert(app.includes('return "Go to the door between docks 165 & 166";'), 'Column
 
 // Lookup/complete-flow UX lock.
 assert(compactApp.includes('if (rnLookupAttempts >= 3) { showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS'), 'third failed lookup must use large instruction screen');
-assert(compactApp.includes('if (fallbackResult?.customer) { const doorResult = await getDoorAssignmentWithStaging'), 'valid-load ET submit fallback must still use WMS customer door assignment');
-assert(compactApp.includes('showLargeInstructionScreen(doorResult.assignment, "Load was found in WMS, but ET could not be created.'), 'valid-load ET fallback must show large instruction screen, not inline red error');
+assert(compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS, but ET could not be created.'), 'valid-load ET fallback must show large instruction screen, not inline red error');
 
 // ET recovery lock: if the phone misses the create response, recover SELF_CHECKIN ET by load.
 assert(app.includes('async function recoverRecentlyCreatedEt'), 'frontend must attempt YMS ET recovery after ambiguous create failures');
