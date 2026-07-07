@@ -75,6 +75,12 @@ async function migrateLegacyRecords(p) {
   // Quarantine obvious legacy/non-Lincoln records even if a default facility was added later.
   await p.query(`UPDATE checkins SET facility_id='LEGACY_NON_LINCOLN', facility_name='Legacy (non-Lincoln)'
     WHERE door_assignment ILIKE '%165%' OR door_assignment ILIKE '%166%' OR door_assignment ILIKE '%dock 2%'`);
+
+  // Quarantine specific known non-Lincoln records confirmed as Valley View LT_F1
+  const knownNonLincolnETs = ['ET-1119142', 'ET-1119115', 'ET-1119113', 'ET-1119111'];
+  await p.query(`UPDATE checkins SET facility_id='LT_F1_QUARANTINED', facility_name='Valley View (quarantined)'
+    WHERE et_number = ANY($1) AND facility_id = 'LT_F22'`, [knownNonLincolnETs]);
+
   const unclassified = await p.query("SELECT id, door_assignment FROM checkins WHERE facility_id IS NULL OR facility_id = ''");
   for (const row of unclassified.rows) {
     const facility = classifyFacility(row);

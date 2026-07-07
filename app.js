@@ -644,6 +644,8 @@ async function completeCheckin() {
         doorAssignment: assignment,
         doorSource: doorResult.source || "",
         stagedLocation: doorResult.stagedLocation || "",
+        dockId: doorResult.dockId || doorResult.locationId || "",
+        facilityVerified: Boolean(wmsResult.facilityVerified),
         hasDriverPhoto: Boolean(form.elements.driverPhoto?.files?.length),
         hasEquipmentPhoto: Boolean(form.elements.equipmentPhoto?.files?.length),
         hasLoadPhoto: Boolean(form.elements.loadPhoto?.files?.length),

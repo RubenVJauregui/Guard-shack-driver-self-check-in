@@ -785,6 +785,9 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const wmsResult = await wmsLookup(rn, `Bearer ${bearerToken}`);
+      if (wmsResult.customer) {
+        wmsResult.facilityVerified = true;
+      }
       sendJson(res, wmsResult);
     } catch (err) {
       sendJson(res, { customer: "", error: "WMS lookup failed" });
@@ -805,6 +808,9 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const wmsResult = await wmsInboundLookup(keyword, `Bearer ${bearerToken}`);
+      if (wmsResult.customer) {
+        wmsResult.facilityVerified = true;
+      }
       sendJson(res, wmsResult);
     } catch (err) {
       sendJson(res, { customer: "", error: "WMS inbound lookup failed" });
@@ -993,6 +999,24 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     try {
       const body = await readBody(req);
       const record = JSON.parse(body || "{}");
+
+      // Facility validation: reject cross-facility records
+      if (!record.facilityVerified) {
+        const direction = record.direction || "";
+        const hasLoad = Boolean(record.loadId || record.wmsLoadNo || record.loadNo);
+        const hasReceipt = Boolean(record.receiptId || record.poNo);
+        if (direction === "inbound" && hasReceipt) {
+          console.log(`[Facility guard] Inbound record missing facilityVerified flag. Rejecting.`);
+          sendJson(res, { saved: false, error: "This receipt could not be verified as a Lincoln (LT_F22) record. Please confirm the receipt belongs to Lincoln before checking in." }, 400);
+          return;
+        }
+        if (direction !== "inbound" && hasLoad) {
+          console.log(`[Facility guard] Outbound record missing facilityVerified flag. Rejecting.`);
+          sendJson(res, { saved: false, error: "This load could not be verified as a Lincoln (LT_F22) record. Please confirm the load belongs to Lincoln before checking in." }, 400);
+          return;
+        }
+      }
+
       let emailNotification = { sent: false };
       try {
         emailNotification = await sendStoredCheckinEmailNotification(record);
