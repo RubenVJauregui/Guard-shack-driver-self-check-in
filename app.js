@@ -175,7 +175,15 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showActionError("Go to the door between docks 165 & 166 and see the employee");
+      if (isDropOffEmpty()) {
+        showActionError("Drop off container / trailer at any open spot in the yard");
+      } else if (isDropOffFull()) {
+        showActionError("Drop off container / trailer at any open spot in the yard");
+      } else if (isPickupEmpty()) {
+        showActionError("Please proceed to pick up your empty");
+      } else {
+        showActionError("Go to the door between docks 165 & 166 and see the employee");
+      }
     }
     return;
   }
