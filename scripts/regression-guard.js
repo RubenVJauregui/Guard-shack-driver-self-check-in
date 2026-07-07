@@ -30,7 +30,7 @@ assert(index.includes('app.js?v=etlock2'), 'index.html must load cache-busted ap
 assert(index.includes('styles.css?v=etlock2'), 'index.html must load cache-busted styles.css?v=etlock2');
 
 // Door routing lock.
-assert(app.includes('const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";'), 'unlisted valid WMS customers must ask employee for door assignment');
+assert(app.includes('const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";'), 'unlisted/fallback messages must use Excel row 1 Column B');
 assert(app.includes('function getDoorAssignmentWithStaging'), 'Complete flow must include getDoorAssignmentWithStaging helper');
 assert(compactApp.includes('return { assignment: getDoorAssignment(customerValue), source: "excel", stagedLocation: "" };'), 'getDoorAssignmentWithStaging must return Excel door assignment');
 assert(app.includes('"Gurunanda"'), 'Gurunanda must be explicitly mapped in the Dock 45 customer list');
@@ -41,7 +41,9 @@ assert(app.includes('return "Go to the door between docks 165 & 166";'), 'Column
 assert(app.includes('setCompleteHeader("assistance")'), 'assistance fallback screen must not say Check in complete');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = "Please see the employee for assistance";'), 'third failed lookup must show assistance, not door assignment');
 assert(compactApp.includes('if (rnLookupAttempts >= 3) { showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS'), 'third failed lookup must use large instruction screen');
-assert(compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS, but ET could not be created.'), 'valid-load ET fallback must show large instruction screen, not inline red error');
+assert(compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "")'), 'all fallback instruction messages must use Excel row 1 text only');
+assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS'), 'ET fallback must not display non-Excel-row message text');
+assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "PO / RN / Load was not found'), 'failed lookup fallback must not display non-Excel-row message text');
 
 // ET creation lock: no completed check-in or dock assignment without confirmed server-created ET.
 assert(server.includes('if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket")'), 'server must expose /api/yms-entry-ticket');

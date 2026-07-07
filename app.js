@@ -59,7 +59,7 @@ const door70Customers = [
   "Euromarket / Crate & Barrel"
 ];
 
-const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";
+const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
 
 const rnToCustomerMap = {};
 
@@ -193,9 +193,9 @@ nextBtn.addEventListener("click", async () => {
           ? lastValidatedRnResult
           : await resolveCustomerFromIdentifiers(identifiers);
         if (fallbackResult?.customer) {
-          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS, but ET could not be created. Please see the employee for assistance.");
+          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "");
         } else {
-          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "ET could not be created. Please see the employee for assistance.");
+          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "");
         }
       }
     }
@@ -247,7 +247,7 @@ nextBtn.addEventListener("click", async () => {
       rnLookupAttempts++;
       const tried = identifiers.join(", ");
       if (rnLookupAttempts >= 3) {
-        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "PO / RN / Load was not found after multiple attempts. Please see the employee for assistance.");
+        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "");
       } else {
         showActionError(`PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
