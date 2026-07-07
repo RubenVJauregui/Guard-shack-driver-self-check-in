@@ -26,8 +26,8 @@ assert(!dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must not r
 assert(!pkg.includes('driver-checkin-lincoln'), 'package metadata must not identify this app as Lincoln');
 
 // Asset cache-busting lock: phones must not keep stale JS/CSS.
-assert(index.includes('app.js?v=reviewed1'), 'index.html must load cache-busted app.js?v=reviewed1');
-assert(index.includes('styles.css?v=reviewed1'), 'index.html must load cache-busted styles.css?v=reviewed1');
+assert(index.includes('app.js?v=reviewed2'), 'index.html must load cache-busted app.js?v=reviewed2');
+assert(index.includes('styles.css?v=reviewed2'), 'index.html must load cache-busted styles.css?v=reviewed2');
 
 // Door routing lock.
 assert(app.includes('const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";'), 'unlisted valid WMS customers must ask employee for door assignment');
