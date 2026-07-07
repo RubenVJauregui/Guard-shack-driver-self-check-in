@@ -234,7 +234,7 @@ nextBtn.addEventListener("click", async () => {
       rnLookupAttempts++;
       const tried = identifiers.join(", ");
       if (rnLookupAttempts >= 3) {
-        showActionError(`PO / RN / Load was not found after multiple attempts. ${FALLBACK_AFTER_MAX_ATTEMPTS}`);
+        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "PO / RN / Load was not found after multiple attempts. Please see the employee for assistance.");
       } else {
         showActionError(`PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
@@ -331,6 +331,19 @@ if (preCheckinSearchBtn) {
 function setYardInstructionMode(enabled) {
   if (!completeScreen) return;
   completeScreen.classList.toggle("yard-instruction-mode", Boolean(enabled));
+}
+
+function showLargeInstructionScreen(message, details = "Please see the employee for assistance.") {
+  setYardInstructionMode(true);
+  doorInstruction.textContent = message;
+  identityQr.style.display = "none";
+  identityQrLink.style.display = "none";
+  const qrHelp = document.querySelector(".qr-help");
+  if (qrHelp) qrHelp.style.display = "none";
+  etNumberEl.textContent = "";
+  rnNumberEl.textContent = "";
+  completionDetails.textContent = details;
+  showScreen(5);
 }
 
 function showScreen(index) {
