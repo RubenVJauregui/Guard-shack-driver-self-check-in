@@ -7,17 +7,12 @@ function getPool() {
   return pool;
 }
 
-const NON_LINCOLN_DOOR_PATTERNS = ['165', '166', 'dock 2', 'docks 165', 'docks 166'];
+const VALLEY_VIEW_DOOR_PATTERNS = ['165', '166', 'dock 45', 'dock 144', 'dock 70', 'dock 2'];
 
 function classifyFacility(record) {
   const door = String(record.door_assignment || '').toLowerCase();
-  for (const pat of NON_LINCOLN_DOOR_PATTERNS) {
-    if (door.includes(pat)) return 'LEGACY_NON_LINCOLN';
-  }
-  if (!door) return 'LEGACY_UNVERIFIED';
-  const lincolnDoors = ['docks 98', 'docks 97', 'docks 75', 'docks 74', 'docks 56', 'docks 55', 'dock 98'];
-  for (const ld of lincolnDoors) {
-    if (door.includes(ld)) return 'LT_F22';
+  for (const pat of VALLEY_VIEW_DOOR_PATTERNS) {
+    if (door.includes(pat)) return 'LT_F1';
   }
   return 'LEGACY_UNVERIFIED';
 }
@@ -72,13 +67,10 @@ async function initDb() {
 }
 
 async function migrateLegacyRecords(p) {
-  // Quarantine obvious legacy/non-Lincoln records even if a default facility was added later.
-  await p.query(`UPDATE checkins SET facility_id='LEGACY_NON_LINCOLN', facility_name='Legacy (non-Lincoln)'
-    WHERE door_assignment ILIKE '%165%' OR door_assignment ILIKE '%166%' OR door_assignment ILIKE '%dock 2%'`);
   const unclassified = await p.query("SELECT id, door_assignment FROM checkins WHERE facility_id IS NULL OR facility_id = ''");
   for (const row of unclassified.rows) {
     const facility = classifyFacility(row);
-    const name = facility === 'LT_F22' ? 'Lincoln' : (facility === 'LEGACY_NON_LINCOLN' ? 'Legacy (non-Lincoln)' : 'Legacy (unverified)');
+    const name = facility === 'LT_F1' ? 'Valley View' : (facility === 'LEGACY_UNVERIFIED' ? 'Legacy (unverified)' : 'Legacy (unverified)');
     await p.query('UPDATE checkins SET facility_id=$1, facility_name=$2 WHERE id=$3', [facility, name, row.id]);
   }
 }

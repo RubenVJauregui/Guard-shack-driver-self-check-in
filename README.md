@@ -1,8 +1,8 @@
-# Driver Self Check-In — Lincoln (LT_F22)
+# Driver Self Check-In — Valley View (LT_F1)
 
-Guard shack driver self check-in app for the Lincoln facility. Drivers complete a multi-step form (identity, vehicle, load details), the app creates a YMS entry ticket with attached driver/carrier/vehicle/trip data, performs a WMS load lookup for customer resolution, assigns the correct dock door, and generates a QR code for guard scanning.
+Guard shack driver self check-in app for the Valley View facility. Drivers complete a multi-step form (identity, vehicle, load details), the app creates a YMS entry ticket with attached driver/carrier/vehicle/trip data, performs a WMS load lookup for customer resolution, assigns the correct dock door, and generates a QR code for guard scanning.
 
-## Lincoln Door Assignment Rules
+## Valley View Door Assignment Rules
 
 | Customer Match | Assignment |
 |---|---|
@@ -30,7 +30,7 @@ Default URL: http://127.0.0.1:4178/
 | `WMS_PASSWORD` | WMS login password (plain text) |
 | `WMS_PASSWORD_B64` | WMS login password (base64-encoded, takes precedence over plain) |
 | `WMS_TENANT_ID` | Tenant ID (default: `LT`) |
-| `WMS_FACILITY_ID` | Facility ID (default: `LT_F22`) |
+| `WMS_FACILITY_ID` | Facility ID (default: `LT_F1`) |
 | `YMS_BASE_URL` | YMS API base URL (default: `https://traffic.item.com/api/yms`) |
 | `TIMEZONE` | IANA timezone (default: `America/Los_Angeles`) |
 | `PORT` | Server port (default: `4178`) |
@@ -51,7 +51,7 @@ Once you know the deployed URL:
 node generate-qr.js https://your-deployed-url.example.com
 ```
 
-This writes `lincoln-checkin-qr.png` to the project root. Print and post at the Lincoln guard shack.
+This writes `valley-view-checkin-qr.png` to the project root. Print and post at the Valley View guard shack.
 
 If running without a known production URL, the server logs the LAN IP on startup for local testing.
 
@@ -79,7 +79,7 @@ When a guard scans the QR code, the identity page displays:
 
 ## Inbound Receipt Check-In Support
 
-The Lincoln app supports inbound receipts as well as outbound loads. On the Entry Task and Load Details screen, the app checks both fields:
+The Valley View app supports inbound receipts as well as outbound loads. On the Entry Task and Load Details screen, the app checks both fields:
 
 - Reference #
 - PO / RN / Load #
@@ -88,7 +88,7 @@ Lookup behavior:
 1. Try outbound load lookup.
 2. If not found, try inbound receipt lookup by Receipt/RN, PO number, BOL/reference, or container number.
 
-Confirmed Lincoln inbound example:
+Confirmed Valley View inbound example:
 - PO: `4700011468`
 - Receipt/RN: `RN-6380`
 - BOL/reference/container: `0080804544`
@@ -103,7 +103,7 @@ Default recipients:
 - Juan.barragan@unisco.com
 - Ryan.Morales@unisco.com
 - Angela.bryant@unisco.com
-- opsteam.lincoln@unisco.com
+- opsteam.valley-view@unisco.com
 
 Required production email settings:
 - `SMTP_HOST`

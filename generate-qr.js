@@ -5,12 +5,12 @@ const path = require("node:path");
 const url = process.argv[2];
 if (!url) {
   console.error("Usage: node generate-qr.js <deployed-url>");
-  console.error("Example: node generate-qr.js https://driver-checkin-lincoln.coolify.item.pub");
+  console.error("Example: node generate-qr.js https://driver-checkin-4178-49c078.coolify.item.pub");
   process.exit(1);
 }
 
 const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=16&format=png&data=${encodeURIComponent(url)}`;
-const outFile = path.join(__dirname, "lincoln-checkin-qr.png");
+const outFile = path.join(__dirname, "valley-view-checkin-qr.png");
 
 console.log(`Generating QR code for: ${url}`);
 console.log(`Output: ${outFile}`);

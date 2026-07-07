@@ -39,7 +39,7 @@ const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F1";
 const YMS_BASE_URL = process.env.YMS_BASE_URL || "https://traffic.item.com/api/yms";
 const TIMEZONE = process.env.TIMEZONE || "America/Los_Angeles";
 const OPERATOR_NOTIFICATION_RECIPIENT = process.env.OPERATOR_NOTIFICATION_RECIPIENT || "Juan.barragan@unisco.com";
-const ALERT_RECIPIENTS = (process.env.ALERT_RECIPIENTS || "Juan.barragan@unisco.com,Ryan.Morales@unisco.com,Angela.bryant@unisco.com,opsteam.lincoln@unisco.com")
+const ALERT_RECIPIENTS = (process.env.ALERT_RECIPIENTS || "Juan.barragan@unisco.com,Ryan.Morales@unisco.com,Angela.bryant@unisco.com,Juan.barragan@unisco.com")
   .split(",")
   .map((email) => email.trim())
   .filter(Boolean);
@@ -117,107 +117,6 @@ function escapeHtmlServer(value) {
 }
 
 
-
-function recoverYmsEntryTicket(ymsToken, criteria = {}) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(`${YMS_BASE_URL}/workSpace/search-by-paging`);
-    const mod = url.protocol === "https:" ? https : http;
-    const body = JSON.stringify({
-      loadId: criteria.loadId || "",
-      equipmentNoLike: criteria.equipmentNo || "",
-      driverLicense: criteria.driverLicense || "",
-      createdSource: "SELF_CHECKIN",
-      pageSize: 5,
-      currentPage: 1,
-      sortingFields: [{ field: "createdTime", orderBy: "DESC" }]
-    });
-    const req = mod.request(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${ymsToken}`,
-        "X-Tenant-ID": WMS_TENANT_ID,
-        "X-Yard-ID": WMS_FACILITY_ID,
-        "x-facility-id": WMS_FACILITY_ID,
-        "Item-Time-Zone": TIMEZONE,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "Content-Length": String(Buffer.byteLength(body))
-      },
-      timeout: 8000
-    }, (res) => {
-      const statusCode = res.statusCode;
-      let responseBody = "";
-      res.on("data", (chunk) => { responseBody += chunk; });
-      res.on("end", () => {
-        console.log(`[YMS ET recovery] search status=${statusCode}`);
-        try {
-          const parsed = JSON.parse(responseBody || "{}");
-          const candidates = extractYmsList(parsed);
-          const loadId = criteria.loadId || "";
-          const equipmentNo = normalizeForCompare(criteria.equipmentNo || "");
-          const driverLicense = normalizeForCompare(criteria.driverLicense || "");
-          const match = candidates.find((entry) => {
-            const entryId = entry.entryId || entry.entry_id || entry.entryTicketId || entry.id || "";
-            if (!entryId) return false;
-            if (loadId && JSON.stringify(entry).includes(loadId) === false) return false;
-            const source = String(entry.createdSource || entry.created_source || "").toUpperCase();
-            if (source && source !== "SELF_CHECKIN") return false;
-            if (equipmentNo && !JSON.stringify(entry).toUpperCase().includes(equipmentNo)) return false;
-            if (driverLicense && !JSON.stringify(entry).toUpperCase().includes(driverLicense)) return false;
-            return true;
-          }) || null;
-          if (!match) {
-            resolve({ recovered: false });
-            return;
-          }
-          const etNumber = match.entryId || match.entry_id || match.entryTicketId || match.id || "";
-          resolve({
-            recovered: Boolean(etNumber),
-            etNumber,
-            entryStatus: match.entryStatus || match.entry_status || match.status || "",
-            raw: match
-          });
-        } catch (err) {
-          reject(new Error(`YMS ET recovery parse error: ${err.message}`));
-        }
-      });
-    });
-    req.on("error", (err) => reject(err));
-    req.on("timeout", () => { req.destroy(); reject(new Error("YMS ET recovery timeout")); });
-    req.write(body);
-    req.end();
-  });
-}
-
-function extractYmsList(value) {
-  if (Array.isArray(value)) return value;
-  if (!value || typeof value !== "object") return [];
-  const likely = [
-    value.data?.records,
-    value.data?.list,
-    value.data?.items,
-    value.data?.content,
-    value.data?.data,
-    value.records,
-    value.list,
-    value.items,
-    value.content
-  ];
-  for (const item of likely) {
-    if (Array.isArray(item)) return item;
-  }
-  if (value.data && typeof value.data === "object") {
-    for (const nested of Object.values(value.data)) {
-      if (Array.isArray(nested)) return nested;
-      if (nested && typeof nested === "object") {
-        for (const deeper of Object.values(nested)) {
-          if (Array.isArray(deeper)) return deeper;
-        }
-      }
-    }
-  }
-  return [];
-}
 
 function normalizeForCompare(value = "") {
   return String(value).trim().toUpperCase();
@@ -853,7 +752,7 @@ const server = http.createServer(async (req, res) => {
       const data = JSON.parse(body || "{}");
       const result = await db.updateAssignment(Number(id), data);
       if (result) sendJson(res, { updated: true, assignment: result });
-      else sendJson(res, { updated: false, error: "Record not found or not a Lincoln record" }, 404);
+      else sendJson(res, { updated: false, error: "Record not found or not a Valley View record" }, 404);
     } catch (err) {
       console.log(`[Assignment] error: ${err.message}`);
       sendJson(res, { updated: false, error: "Assignment update failed" }, 500);
@@ -984,7 +883,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     const result = await db.queryCheckins({ ...Object.fromEntries(url.searchParams.entries()), page: 1, limit: 10000 });
     const headers = ["created_at","et_number","driver_name","driver_phone","driver_license","driver_email","carrier_name","usdot","vehicle_type","license_plate","equipment_type","equipment_no","entry_task","load_type_group","direction","reference_no","load_no","receipt_id","po_no","customer","door_assignment","comments","identity_url"];
     const csv = [headers.join(",")].concat(result.data.map((row) => headers.map((h) => csvCell(row[h])).join(","))).join("\n");
-    res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=lincoln-driver-checkins.csv" });
+    res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=valley-view-driver-checkins.csv" });
     res.end(csv);
     return;
   }
@@ -1040,7 +939,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       const body = await readBody(req);
       const payload = JSON.parse(body || "{}");
       const record = await db.getCheckinById(id);
-      if (!record) { sendJson(res, { created: false, error: "Check-in not found or not a Lincoln record" }, 404); return; }
+      if (!record) { sendJson(res, { created: false, error: "Check-in not found or not a Valley View record" }, 404); return; }
       if (record.direction === "inbound") {
         await db.updateLoadTask(id, { loadTaskStatus: "not_applicable", loadTaskError: "Load task generation is for outbound loads only. Inbound receipts are processed through the receiving workflow." });
         sendJson(res, { created: false, error: "Load task generation is for outbound loads only. Inbound receipts are processed through the receiving workflow." });
@@ -1121,24 +1020,6 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     } catch (err) {
       console.log(`[Ticket lookup] error: ${err.message}`);
       sendJson(res, { found: false, error: "Lookup failed" });
-    }
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket-recover") {
-    try {
-      const body = await readBody(req);
-      const criteria = JSON.parse(body || "{}");
-      const ymsToken = await getYmsBearerToken();
-      if (!ymsToken) {
-        sendJson(res, { recovered: false, error: "YMS auth unavailable" });
-        return;
-      }
-      const result = await recoverYmsEntryTicket(ymsToken, criteria);
-      sendJson(res, result);
-    } catch (err) {
-      console.log(`[YMS ET recovery] endpoint error: ${err.message}`);
-      sendJson(res, { recovered: false, error: "ET recovery failed" });
     }
     return;
   }
@@ -1746,7 +1627,7 @@ async function fetchWiseOperators(authHeader) {
       return true;
     })
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  console.log(`[WISE users] Found ${operators.length} active Lincoln users`);
+  console.log(`[WISE users] Found ${operators.length} active Valley View users`);
   return operators;
 }
 
@@ -1860,7 +1741,7 @@ function createWmsLoadTask(authHeader, params) {
 // For outbound check-ins: create WMS load task assigned to RMorales, then send ops email.
 const AUTO_OPERATOR_ID = "1853651235951439312";
 const AUTO_OPERATOR_NAME = "Ryan Morales";
-const OPS_EMAIL_RECIPIENT = "opsteam.lincoln@unisco.com";
+const OPS_EMAIL_RECIPIENT = "Juan.barragan@unisco.com";
 
 async function autoPostCheckinWorkflow(checkinId, record) {
   const direction = record.direction || "";

@@ -60,6 +60,7 @@ const door70Customers = [
 ];
 
 const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
+const ASSISTANCE_DOOR_INSTRUCTION = "Please see the employee for door assignment";
 
 const rnToCustomerMap = {};
 
@@ -157,7 +158,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
+const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -179,25 +180,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      if (isDropOffEmpty()) {
-        showLargeInstructionScreen("Drop off container / trailer at any open spot in the yard", "ET could not be created. Please see the employee for assistance.");
-      } else if (isDropOffFull()) {
-        showLargeInstructionScreen("Drop off container / trailer at any open spot in the yard", "ET could not be created. Please see the employee for assistance.");
-      } else if (isPickupEmpty()) {
-        showLargeInstructionScreen("Please proceed to pick up your empty", "ET could not be created. Please see the employee for assistance.");
-      } else {
-        const data = getFormData();
-        const identifiers = getLoadIdentifiers(data);
-        const validationKey = identifiers.join("|");
-        let fallbackResult = validationKey === lastValidatedRn && lastValidatedRnResult?.customer
-          ? lastValidatedRnResult
-          : await resolveCustomerFromIdentifiers(identifiers);
-        if (fallbackResult?.customer) {
-          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "");
-        } else {
-          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "");
-        }
-      }
+      showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "ET could not be created. Please see the employee for assistance.");
     }
     return;
   }
@@ -247,7 +230,7 @@ nextBtn.addEventListener("click", async () => {
       rnLookupAttempts++;
       const tried = identifiers.join(", ");
       if (rnLookupAttempts >= 3) {
-        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "");
+        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Please see the employee for assistance.");
       } else {
         showActionError(`PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
@@ -437,9 +420,9 @@ function validateScreen() {
       showActionError(message);
       return false;
     }
-    if (driverPhotoValidating) {
-      const message = "Still checking your driver license photo, please wait.";
-      showLicenseValidation("info", message);
+    if (driverPhotoValidating || !driverPhotoValidated) {
+      const message = "Please upload a clear, readable picture of your driver license before continuing.";
+      showLicenseValidation(driverPhotoValidating ? "info" : "error", message);
       showActionError(message);
       return false;
     }
@@ -467,7 +450,7 @@ function getRequiredFieldMessage(field) {
     firstName: "Please enter your first name before continuing.",
     lastName: "Please enter your last name before continuing.",
     license: "Please enter your driver license number before continuing.",
-    driverPhoto: "Please upload a picture of your driver license before continuing.",
+    driverPhoto: "Please upload a clear, readable picture of your driver license before continuing.",
     carrierName: "Please enter the carrier name before continuing.",
     plate: "Please enter the license plate number before continuing.",
     equipmentNo: "Please enter the container or trailer number before continuing.",
@@ -503,27 +486,6 @@ function buildReview() {
     .join("");
 }
 
-async function recoverRecentlyCreatedEt({ loadId = "", equipmentNo = "", driverLicense = "" } = {}) {
-  if (!loadId) return null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await wait(1500);
-    try {
-      const res = await fetch("/api/yms-entry-ticket-recover", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ loadId, equipmentNo, driverLicense })
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data.recovered && data.etNumber) return data;
-    } catch {}
-  }
-  return null;
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function completeCheckin() {
   const data = getFormData();
