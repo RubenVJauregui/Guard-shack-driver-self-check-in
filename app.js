@@ -737,7 +737,8 @@ async function resolveCustomerFromRn(rnValue) {
           customerId: data.customerId || "",
           loadId: data.loadId || "",
           loadNo: data.loadNo || "",
-          customerCode: data.customerCode || ""
+          customerCode: data.customerCode || "",
+          facilityVerified: Boolean(data.facilityVerified)
         };
       }
     }
@@ -759,7 +760,8 @@ async function resolveCustomerFromRn(rnValue) {
       customerCode: data.customerCode || "",
       receiptId: data.receiptId || "",
       poNo: data.poNo || "",
-      referenceNo: data.referenceNo || data.bolNo || data.containerNo || ""
+      referenceNo: data.referenceNo || data.bolNo || data.containerNo || "",
+      facilityVerified: Boolean(data.facilityVerified)
     };
   } catch {
     return { customer: "" };
