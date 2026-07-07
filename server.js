@@ -28,6 +28,7 @@ const root = __dirname;
 const dataDir = path.join(root, "identity-records");
 const port = Number(process.env.PORT || 4178);
 const host = process.env.HOST || "0.0.0.0";
+const LINCOLN_BUILD_LOCK = "LT_F22_1783460074";
 
 const WMS_BASE_URL = process.env.WMS_BASE_URL || "https://unis.item.com/api";
 const WMS_AUTH_TOKEN = process.env.WMS_AUTH_TOKEN || "";
