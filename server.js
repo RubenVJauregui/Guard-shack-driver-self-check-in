@@ -49,6 +49,8 @@ const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() ===
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Valley View Driver Check-In <no-reply@unisco.com>";
+const ymsEtBySubmissionSignature = new Map();
+
 
 function isEmailEnabled() {
   return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && ALERT_RECIPIENTS.length);
@@ -498,7 +500,39 @@ function exchangeWmsForYms(wmsToken) {
   });
 }
 
-function createYmsEntryTicket(ymsToken) {
+function findEtNumber(value) {
+  if (!value) return "";
+  if (typeof value === "string") return /^ET[-\w]+$/i.test(value.trim()) ? value.trim() : "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findEtNumber(item);
+      if (found) return found;
+    }
+    return "";
+  }
+  if (typeof value !== "object") return "";
+  const directKeys = ["entryId", "entryNo", "entryNumber", "etNumber", "ticketNo"];
+  for (const key of directKeys) {
+    const candidate = value[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  for (const key of directKeys) {
+    const candidate = value.data?.[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  const nested = [value.data, value.result, value.payload, value.entryTicket, value.ticket];
+  for (const item of nested) {
+    const found = findEtNumber(item);
+    if (found) return found;
+  }
+  return "";
+}
+
+function isTemporaryYmsCreateFailure(err = {}) {
+  return err.temporary === true || err.timeout === true || (Number(err.statusCode) >= 500 && Number(err.statusCode) < 600);
+}
+
+function createYmsEntryTicketOnce(ymsToken) {
   return new Promise((resolve, reject) => {
     const etUrl = new URL(`${YMS_BASE_URL}/self-check-in/entry-ticket`);
     const mod = etUrl.protocol === "https:" ? https : http;
@@ -515,32 +549,54 @@ function createYmsEntryTicket(ymsToken) {
         Accept: "application/json",
         "Content-Length": "2"
       },
-      timeout: 8000
+      timeout: 12000
     }, (res) => {
       const statusCode = res.statusCode;
       let body = "";
       res.on("data", (chunk) => { body += chunk; });
       res.on("end", () => {
         console.log(`[YMS ET] create response status=${statusCode}`);
+        let parsed = null;
         try {
-          const parsed = JSON.parse(body);
-          const etNumber = parsed?.data || "";
-          if (etNumber && typeof etNumber === "string") {
-            console.log(`[YMS ET] Created: ${etNumber}`);
-            resolve(etNumber);
-          } else {
-            reject(new Error(`No ET in response (code=${parsed?.code}, msg=${parsed?.msg || parsed?.message || ""})`));
-          }
+          parsed = body ? JSON.parse(body) : {};
         } catch (err) {
-          reject(new Error(`YMS ET parse error: ${err.message}`));
+          console.log(`[YMS ET] create parse failure body=${body.slice(0, 2000)}`);
+          const parseErr = new Error(`YMS ET parse error: ${err.message}`);
+          parseErr.statusCode = statusCode;
+          reject(parseErr);
+          return;
         }
+        const etNumber = findEtNumber(parsed);
+        if (statusCode >= 200 && statusCode < 300 && etNumber) {
+          console.log(`[YMS ET] Created: ${etNumber}`);
+          resolve({ ok: true, etNumber, raw: parsed });
+          return;
+        }
+        console.log(`[YMS ET] create failed/no ET status=${statusCode} body=${JSON.stringify(parsed).slice(0, 2000)}`);
+        const err = new Error(etNumber ? `YMS ET status=${statusCode}` : "YMS did not return an ET number");
+        err.statusCode = statusCode;
+        err.temporary = statusCode >= 500 && statusCode < 600;
+        err.raw = parsed;
+        reject(err);
       });
     });
-    req.on("error", (err) => reject(err));
-    req.on("timeout", () => { req.destroy(); reject(new Error("YMS ET creation timeout")); });
+    req.on("error", (err) => { err.temporary = true; reject(err); });
+    req.on("timeout", () => { const err = new Error("YMS ET creation timeout"); err.timeout = true; err.temporary = true; req.destroy(err); reject(err); });
     req.write("{}");
     req.end();
   });
+}
+
+async function createYmsEntryTicket(ymsToken) {
+  try {
+    return await createYmsEntryTicketOnce(ymsToken);
+  } catch (err) {
+    if (isTemporaryYmsCreateFailure(err)) {
+      console.log(`[YMS ET] temporary create failure, retrying once: ${err.message}`);
+      return await createYmsEntryTicketOnce(ymsToken);
+    }
+    throw err;
+  }
 }
 
 function attachBasicInfo(ymsToken, entryId, payload) {
@@ -1094,13 +1150,28 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
 
       const ymsToken = await getYmsBearerToken();
       if (!ymsToken) {
-        sendJson(res, { etNumber: "", error: "YMS auth unavailable" });
+        sendJson(res, { ok: false, etNumber: "", error: "YMS auth unavailable" }, 503);
         return;
       }
 
-      // Step 1: Create blank ET
-      const etNumber = await createYmsEntryTicket(ymsToken);
+      const idempotencyKey = String(payload.idempotencyKey || payload.idempotencySignature || "").trim();
+      if (idempotencyKey && ymsEtBySubmissionSignature.has(idempotencyKey)) {
+        const cached = ymsEtBySubmissionSignature.get(idempotencyKey);
+        console.log(`[YMS ET] Reusing ET ${cached.etNumber} for exact submission signature ${idempotencyKey.slice(0, 12)}`);
+        sendJson(res, { ok: true, etNumber: cached.etNumber, reused: true, raw: cached.raw || {} });
+        return;
+      }
+
+      // Step 1: Create blank ET and require a real ET number.
+      const created = await createYmsEntryTicket(ymsToken);
+      const etNumber = created.etNumber;
+      if (!etNumber) {
+        console.log(`[YMS ET] create returned without ET number raw=${JSON.stringify(created.raw || {}).slice(0, 2000)}`);
+        sendJson(res, { ok: false, error: "YMS did not return an ET number", raw: created.raw || {} }, 502);
+        return;
+      }
       console.log(`[YMS ET] Created ET: ${etNumber}`);
+      if (idempotencyKey) ymsEtBySubmissionSignature.set(idempotencyKey, { etNumber, raw: created.raw || {}, createdAt: Date.now() });
 
       let basicInfoAttached = false;
       let tripInfoAttached = false;
@@ -1128,10 +1199,10 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
 
       // Notification email is sent after the browser saves the complete dashboard record,
       // because that record includes the check-in link and dock door assignment.
-      sendJson(res, { etNumber, basicInfoAttached, tripInfoAttached, emailNotificationSent: false });
+      sendJson(res, { ok: true, etNumber, basicInfoAttached, tripInfoAttached, emailNotificationSent: false, raw: created.raw || {} });
     } catch (err) {
       console.log(`[YMS ET] endpoint error: ${err.message}`);
-      sendJson(res, { etNumber: "", error: "ET creation failed" });
+      sendJson(res, { ok: false, etNumber: "", error: err.message === "YMS did not return an ET number" ? "YMS did not return an ET number" : "ET creation failed" }, 502);
     }
     return;
   }

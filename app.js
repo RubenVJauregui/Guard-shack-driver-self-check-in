@@ -526,18 +526,17 @@ async function completeCheckin() {
   // Resolve customer from RN/load lookup (WMS primary, local fallback)
   const wmsResult = await resolveCustomerFromIdentifiers(identifiers);
   const resolvedCustomer = wmsResult.customer || data.customer || "";
-  const doorResult = await getDoorAssignmentWithStaging(wmsResult.loadId || "", resolvedCustomer);
-  const assignment = doorResult.assignment;
 
-  // Create real YMS ET with driver data attached if not already created
+  // Create and confirm the YMS ET before computing or showing any door/dock assignment.
   if (!etNumber) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 12000);
+      const timeout = setTimeout(() => controller.abort(), 20000);
       const etRes = await fetch("/api/yms-entry-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          idempotencyKey: duplicateEtSignature,
           driverInfo: {
             driverPhone: data.driverPhone || data.phone || "",
             firstName: data.firstName || "",
@@ -572,39 +571,27 @@ async function completeCheckin() {
         signal: controller.signal
       });
       clearTimeout(timeout);
-      if (etRes.ok) {
-        const etData = await etRes.json();
-        if (etData.etNumber) {
-          etNumber = etData.etNumber;
-          etStatus = etData;
-          sessionStorage.setItem("lastCreatedET", etNumber);
-          sessionStorage.setItem("lastCreatedET_signature", duplicateEtSignature);
-        }
+      const etData = await etRes.json().catch(() => ({}));
+      if (etRes.ok && etData.ok === true && etData.etNumber) {
+        etNumber = etData.etNumber;
+        etStatus = etData;
+        sessionStorage.setItem("lastCreatedET", etNumber);
+        sessionStorage.setItem("lastCreatedET_signature", duplicateEtSignature);
       }
     } catch {
-      // ET creation failed
+      // ET creation failed or timed out. Do not advance without a confirmed ET number.
     }
   }
 
-  // If the create response was lost/aborted, recover the ET from YMS before failing.
-  if (!etNumber && wmsResult.loadId) {
-    const recovered = await recoverRecentlyCreatedEt({
-      loadId: wmsResult.loadId,
-      equipmentNo: data.equipmentNo || "",
-      driverLicense: data.license || ""
-    });
-    if (recovered?.etNumber) {
-      etNumber = recovered.etNumber;
-      etStatus = { ...etStatus, recovered: true, entryStatus: recovered.entryStatus || "" };
-      sessionStorage.setItem("lastCreatedET", etNumber);
-      sessionStorage.setItem("lastCreatedET_signature", duplicateEtSignature);
-    }
-  }
+  // Do not recover by load alone; exact idempotency signature is required to reuse an ET.
 
-  // Block completion if no confirmed ET
+  // Block completion if no confirmed ET. No final screen or door/dock assignment may show without this.
   if (!etNumber) {
     return false;
   }
+
+  const doorResult = await getDoorAssignmentWithStaging(wmsResult.loadId || "", resolvedCustomer);
+  const assignment = doorResult.assignment;
 
   // Strip large photo from identity payload to prevent request hang/failure
   const photoThumb = await thumbnailDataUrl(localStorage.getItem("driverLicensePhoto") || "", 300);

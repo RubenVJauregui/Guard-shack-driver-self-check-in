@@ -26,8 +26,8 @@ assert(!dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must not r
 assert(!pkg.includes('driver-checkin-lincoln'), 'package metadata must not identify this app as Lincoln');
 
 // Asset cache-busting lock: phones must not keep stale JS/CSS.
-assert(index.includes('app.js?v=reviewed2'), 'index.html must load cache-busted app.js?v=reviewed2');
-assert(index.includes('styles.css?v=reviewed2'), 'index.html must load cache-busted styles.css?v=reviewed2');
+assert(index.includes('app.js?v=etlock1'), 'index.html must load cache-busted app.js?v=etlock1');
+assert(index.includes('styles.css?v=etlock1'), 'index.html must load cache-busted styles.css?v=etlock1');
 
 // Door routing lock.
 assert(app.includes('const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";'), 'unlisted valid WMS customers must ask employee for door assignment');
@@ -41,11 +41,18 @@ assert(app.includes('return "Go to the door between docks 165 & 166";'), 'Column
 assert(compactApp.includes('if (rnLookupAttempts >= 3) { showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS'), 'third failed lookup must use large instruction screen');
 assert(compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS, but ET could not be created.'), 'valid-load ET fallback must show large instruction screen, not inline red error');
 
-// ET recovery lock: if the phone misses the create response, recover SELF_CHECKIN ET by load.
-assert(app.includes('async function recoverRecentlyCreatedEt'), 'frontend must attempt YMS ET recovery after ambiguous create failures');
-assert(app.includes('/api/yms-entry-ticket-recover'), 'frontend must call ET recovery endpoint');
-assert(server.includes('/api/yms-entry-ticket-recover'), 'server must expose ET recovery endpoint');
-assert(server.includes('/workSpace/search-by-paging'), 'server ET recovery must query YMS workspace search');
+// ET creation lock: no completed check-in or dock assignment without confirmed server-created ET.
+assert(server.includes('if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket")'), 'server must expose /api/yms-entry-ticket');
+assert(server.includes('sendJson(res, { ok: true, etNumber'), 'server YMS ET endpoint must return ok true plus etNumber');
+assert(server.includes('function findEtNumber') && server.includes('entryId') && server.includes('entryNo') && server.includes('entryNumber') && server.includes('etNumber') && server.includes('ticketNo'), 'server must normalize nested ET number fields');
+assert(server.includes('YMS did not return an ET number'), 'server must fail clearly when YMS returns no ET number');
+assert(server.includes('temporary create failure, retrying once'), 'server must retry temporary YMS ET creation failures once');
+assert(server.includes('const ymsEtBySubmissionSignature = new Map();'), 'server must cache ETs by exact idempotency signature');
+assert(server.includes('idempotencyKey') && server.includes('ymsEtBySubmissionSignature.has(idempotencyKey)'), 'server must reuse ET only by exact idempotency key');
+assert(compactApp.includes('idempotencyKey: duplicateEtSignature'), 'client must send exact submission idempotency key to server');
+assert(compactApp.includes('if (etRes.ok && etData.ok === true && etData.etNumber)'), 'client must require ok true and etNumber before completion');
+assert(compactApp.includes('if (!etNumber) { return false; } const doorResult = await getDoorAssignmentWithStaging'), 'client must compute door assignment only after confirmed ET');
+assert(!compactApp.includes('await recoverRecentlyCreatedEt({ loadId:'), 'client must not recover/reuse ET by load alone');
 
 // Drop Off Empty behavior lock.
 assert(compactApp.includes('nextBtn.textContent = "Complete"; if (isDropOffEmpty()) { showLargeInstructionScreen("Drop off container / trailer at any open spot in the yard"'), 'Drop Off Empty submit fallback must show yard open-spot instruction as a large screen');
