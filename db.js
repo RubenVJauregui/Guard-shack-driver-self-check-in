@@ -76,9 +76,9 @@ async function migrateLegacyRecords(p) {
   await p.query(`UPDATE checkins SET facility_id='LEGACY_NON_LINCOLN', facility_name='Legacy (non-Lincoln)'
     WHERE door_assignment ILIKE '%165%' OR door_assignment ILIKE '%166%' OR door_assignment ILIKE '%dock 2%'`);
 
-  // Quarantine specific known non-Lincoln records confirmed as Valley View LT_F1
+  // Quarantine specific known non-Lincoln records confirmed as Lincoln LT_F22
   const knownNonLincolnETs = ['ET-1119142', 'ET-1119115', 'ET-1119113', 'ET-1119111'];
-  await p.query(`UPDATE checkins SET facility_id='LT_F1_QUARANTINED', facility_name='Valley View (quarantined)'
+  await p.query(`UPDATE checkins SET facility_id='NON_LINCOLN_QUARANTINED', facility_name='Non-Lincoln (quarantined)'
     WHERE et_number = ANY($1) AND facility_id = 'LT_F22'`, [knownNonLincolnETs]);
 
   const unclassified = await p.query("SELECT id, door_assignment FROM checkins WHERE facility_id IS NULL OR facility_id = ''");
