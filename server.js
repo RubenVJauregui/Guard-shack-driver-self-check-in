@@ -8,6 +8,22 @@ const nodemailer = require("nodemailer");
 const db = require("./db");
 const { stagingToDoorMapping, outboundActiveStatuses, excludedStatuses } = require("./staging-door-config");
 
+process.on("uncaughtException", (err) => {
+  if (err && (err.code === "ECONNRESET" || err.message === "aborted" || err.message === "Request aborted by client")) {
+    console.log(`[Server] Ignored client disconnect: ${err.code || err.message}`);
+    return;
+  }
+  console.error("[Server] Uncaught exception:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  if (err && (err.code === "ECONNRESET" || err.message === "aborted" || err.message === "Request aborted by client")) {
+    console.log(`[Server] Ignored aborted request promise: ${err.code || err.message}`);
+    return;
+  }
+  console.error("[Server] Unhandled rejection:", err);
+});
+
 const root = __dirname;
 const dataDir = path.join(root, "identity-records");
 const port = Number(process.env.PORT || 4178);
@@ -1035,21 +1051,52 @@ server.listen(port, host, () => {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk) => {
+    let settled = false;
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn(value);
+    };
+    const onData = (chunk) => {
       body += chunk;
       if (body.length > 8_000_000) {
+        settle(reject, new Error("Request body too large"));
         req.destroy();
-        reject(new Error("Request body too large"));
       }
+    };
+    const onEnd = () => settle(resolve, body);
+    const onError = (err) => settle(reject, err);
+    const onAborted = () => settle(reject, Object.assign(new Error("Request aborted by client"), { code: "ECONNRESET" }));
+    function cleanup() {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+      req.off("aborted", onAborted);
+      req.off("close", onAborted);
+    }
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
+    req.on("aborted", onAborted);
+    req.on("close", () => {
+      if (!req.complete) onAborted();
     });
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
   });
 }
 
 function sendJson(res, data, status = 200) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-  res.end(JSON.stringify(data));
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(data));
+  } catch (err) {
+    if (err && (err.code === "ECONNRESET" || err.message === "aborted")) {
+      console.log(`[Server] Response skipped because client disconnected: ${err.code || err.message}`);
+      return;
+    }
+    throw err;
+  }
 }
 
 function csvCell(value) {
