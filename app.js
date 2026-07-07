@@ -1,31 +1,65 @@
-// Lincoln inbound door assignment rules from the approved Lincoln door instructions.
-// Outbound orders do NOT use these customer rules; outbound uses the WISE staged dock lookup.
-const door98_97Customers = [
-  "UNIS TRANSPORTATION",
+// Door assignment rules from latest "Door asignment.xlsx" only
+// Column B: "Go to the door between docks 165 & 166"
+const doorBetween165_166Customers = [
+  "RST",
+  "KING'S HAWAIIAN",
+  "MAMMA CHIA",
+  "MELOGRANO DRINKS LLC",
+  "MUSE ORGANIC LLC",
+  "NATURAL DECADENCE LLC",
+  "ORGAIN, LLC",
+  "OVERSEAS FOOD TRADING",
+  "POMPEIAN INC",
+  "PREFERRED BRANDS",
+  "RECOVERY SPORTS LLC",
+  "RISE BEVERAGES LLC DBA",
+  "SANS WINE & SPIRITS",
+  "UPTIME ENERGY INC",
+  "WATER PLUS LLC",
+  "ZEN BEVERAGE LLC",
+  "TCL - Solar Cell"
+];
+
+// Column D: "Go to the door at dock 144"
+const door144Customers = [
   "ALL MARKET INC / VITA COCO",
-  "SAFE CATCH",
-  "GALANZ",
-  "TCL",
-  "SPLENDOR",
-  "KING COFFEE",
-  "ZURU",
-  "DELMAR"
+  "COME READY FOODS",
+  "HINT INC",
+  "SOURCE86",
+  "KACE TEA LLC",
+  "PLEASS GLOBAL LIMITED",
+  "PREFERRED BRANDS",
+  "RITUAL BEVERAGE COMPANY",
+  "ROAR BEVERAGES INC",
+  "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
+  "SPLENDOR WATER LLC",
+  "WISMETTAC ASIAN FOODS"
 ];
 
-const door75_74Customers = [
-  "NATUS",
-  "STRON",
-  "FED EX UPS"
+// Column F: "Go to the door at Dock 45"
+const door45Customers = [
+  "TCL NORTH AMERICA",
+  "LENNOX INDUSTRIES INC.",
+  "AMIEE LYNN, LNC.",
+  "KARAKA, LLC",
+  "NZXT",
+  "CMPC USA (Cut Paper and Rolls)",
+  "WOODY FLAW CREST INC",
+  "North Star",
+  "CMPC USA",
+  "La Jolla",
+  "ESI",
+  "TPV USA",
+  "Gurunanda",
+  "the only bean"
 ];
 
-const door56_55Customers = [
-  "SCHINDLER",
-  "LIPPERT",
-  "NIAGARA BOTTLING LLC-RESIN",
-  "MAMMC"
+// Column H: "Go to Dock 70"
+const door70Customers = [
+  "Euromarket / Crate & Barrel"
 ];
 
-const EXCEL_DEFAULT_DOOR = "Go to the door between docks 98 & 97";
+const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
 
 const rnToCustomerMap = {};
 
@@ -63,7 +97,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...door98_97Customers, ...door75_74Customers, ...door56_55Customers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...doorBetween165_166Customers, ...door144Customers, ...door45Customers, ...door70Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -123,7 +157,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Please see the employee for assistance";
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Go to the door between docks 165 & 166";
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -510,17 +544,7 @@ async function completeCheckin() {
   const wmsResult = await resolveCustomerFromIdentifiers(identifiers);
   const resolvedCustomer = wmsResult.customer || data.customer || "";
 
-  // Outbound orders must use the WISE staged dock. Do not fall back to inbound/customer door rules.
-  let preResolvedDoorResult = null;
-  if (wmsResult.type !== "inbound") {
-    preResolvedDoorResult = await getDoorAssignmentWithStaging(wmsResult.loadId || "", resolvedCustomer, { direction: "outbound", requireStaged: true });
-    if (!preResolvedDoorResult.assignment) {
-      showActionError(preResolvedDoorResult.message || "This outbound order is not staged to a dock door yet. Please see the employee for assistance.");
-      return false;
-    }
-  }
-
-  // Create and confirm the YMS ET before showing the final instruction.
+  // Create and confirm the YMS ET before computing or showing any door/dock assignment.
   if (!etNumber) {
     try {
       const controller = new AbortController();
@@ -583,7 +607,7 @@ async function completeCheckin() {
     return false;
   }
 
-  const doorResult = preResolvedDoorResult || await getDoorAssignmentWithStaging(wmsResult.loadId || "", resolvedCustomer, { direction: wmsResult.type === "inbound" ? "inbound" : "outbound" });
+  const doorResult = await getDoorAssignmentWithStaging(wmsResult.loadId || "", resolvedCustomer);
   const assignment = doorResult.assignment;
 
   // Strip large photo from identity payload to prevent request hang/failure
@@ -637,7 +661,6 @@ async function completeCheckin() {
         doorAssignment: assignment,
         doorSource: doorResult.source || "",
         stagedLocation: doorResult.stagedLocation || "",
-        dockId: doorResult.dockId || doorResult.locationId || "",
         hasDriverPhoto: Boolean(form.elements.driverPhoto?.files?.length),
         hasEquipmentPhoto: Boolean(form.elements.equipmentPhoto?.files?.length),
         hasLoadPhoto: Boolean(form.elements.loadPhoto?.files?.length),
@@ -828,69 +851,8 @@ async function saveIdentityRecord(identityRecord) {
 }
 
 
-async function getDoorAssignmentWithStaging(loadId, customerValue, options = {}) {
-  const direction = options.direction || "outbound";
-  const requireStaged = Boolean(options.requireStaged);
-
-  if (direction === "inbound") {
-    return {
-      assignment: getDoorAssignment(customerValue),
-      source: "inbound_rules",
-      stagedLocation: "",
-      dockId: ""
-    };
-  }
-
-  if (!loadId) {
-    return {
-      assignment: "",
-      source: "missing_load_id",
-      stagedLocation: "",
-      dockId: "",
-      message: "This outbound order could not be matched to a Lincoln WISE load. Please see the employee for assistance."
-    };
-  }
-
-  try {
-    const res = await fetch(`/api/wms-staged-door?loadId=${encodeURIComponent(loadId)}`);
-    if (res.ok) {
-      const data = await res.json();
-      const assignment = data.assignment || data.door || "";
-      if (isRealDoorAssignment(assignment) && (data.locationId || data.dockId || /dock|door/i.test(assignment))) {
-        return {
-          assignment,
-          source: data.source || "wise_staged_dock",
-          stagedLocation: data.locationName || data.stagedLocation || "",
-          locationId: data.locationId || data.dockId || "",
-          dockId: data.dockId || data.locationId || ""
-        };
-      }
-      return {
-        assignment: "",
-        source: data.source || "not_staged_to_dock",
-        stagedLocation: data.locationName || "",
-        dockId: data.dockId || data.locationId || "",
-        message: "This outbound order is not currently staged to a dock door in WISE. Please see the employee for assistance."
-      };
-    }
-  } catch {}
-
-  if (requireStaged) {
-    return {
-      assignment: "",
-      source: "staged_dock_unavailable",
-      stagedLocation: "",
-      dockId: "",
-      message: "The staged dock door could not be confirmed in WISE. Please see the employee for assistance."
-    };
-  }
-
-  return {
-    assignment: "",
-    source: "staged_dock_unavailable",
-    stagedLocation: "",
-    dockId: ""
-  };
+async function getDoorAssignmentWithStaging(loadId, customerValue) {
+  return { assignment: getDoorAssignment(customerValue), source: "excel", stagedLocation: "" };
 }
 
 function isRealDoorAssignment(value) {
@@ -904,14 +866,17 @@ function getDoorAssignment(customerValue) {
   const normalized = normalizeForDoorMatch(customerValue);
   if (!normalized) return EXCEL_DEFAULT_DOOR;
 
-  if (door98_97Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 98 & 97";
+  if (doorBetween165_166Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door between docks 165 & 166";
   }
-  if (door75_74Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 75 & 74";
+  if (door144Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door at dock 144";
   }
-  if (door56_55Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 56 & 55";
+  if (door45Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door at Dock 45";
+  }
+  if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to Dock 70";
   }
   return EXCEL_DEFAULT_DOOR;
 }
