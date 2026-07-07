@@ -15,6 +15,7 @@ const server = read('server.js');
 const db = read('db.js');
 const index = read('index.html');
 const dashboard = read('dashboard.html');
+const dashboardJs = read('dashboard.js');
 const identity = read('identity.html');
 const qr = read('generate-qr.js');
 const readme = read('README.md');
@@ -22,15 +23,15 @@ const pkg = read('package.json');
 const compactApp = app.replace(/\s+/g, ' ');
 const compactServer = server.replace(/\s+/g, ' ');
 
-// Lincoln / LT_F22 lock.
-assert(server.includes('process.env.WMS_FACILITY_ID || "LT_F22"'), 'server.js must default WMS_FACILITY_ID to LT_F22 and allow env override');
+// Valley View / LT_F1 lock.
+assert(server.includes('process.env.WMS_FACILITY_ID || "LT_F1"'), 'server.js must default WMS_FACILITY_ID to LT_F1 and allow env override');
 assert(!server.includes('const WMS_FACILITY_ID = "LT_F22"'), 'server.js must not hardcode LT_F22');
-assert(index.includes('Driver Check-In — Lincoln'), 'index.html title must remain Lincoln');
-assert(dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must remain scoped to LT_F22');
-assert(identity.includes('Driver Identity — Lincoln'), 'identity page title must say Lincoln');
+assert(index.includes('Driver Check-In — Valley View'), 'index.html title must remain Valley View');
+assert(dashboard.includes('data-facility="LT_F1"'), 'dashboard.html must remain scoped to LT_F1');
+assert(identity.includes('Driver Identity — Valley View'), 'identity page title must say Valley View');
 assert(qr.includes('valley-view-checkin-qr.png'), 'QR generator must output valley-view-checkin-qr.png');
-assert(readme.includes('Lincoln') && readme.includes('LT_F22'), 'README must identify Lincoln / LT_F22');
-assert(!readme.includes('Lincoln') && !identity.includes('Lincoln') && !dashboard.includes('Lincoln') && !qr.includes('lincoln'), 'labels must not mention Lincoln');
+assert(readme.includes('Valley View') && readme.includes('LT_F1'), 'README must identify Valley View / LT_F1');
+assert(!readme.includes('Lincoln') && !identity.includes('Lincoln') && !dashboard.includes('Lincoln') && !dashboardJs.includes('Lincoln') && !qr.includes('lincoln'), 'labels must not mention Lincoln');
 assert(!pkg.includes('driver-checkin-lincoln'), 'package metadata must not identify this app as Lincoln');
 assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
@@ -73,11 +74,11 @@ assert(server.includes('const ymsEtBySubmissionSignature = new Map();'), 'server
 assert(compactApp.includes('idempotencyKey: duplicateEtSignature'), 'client must send exact submission idempotency key to server');
 assert(compactApp.includes('if (etRes.ok && etData.ok === true && etData.etNumber)'), 'client must require ok true and etNumber before completion');
 
-// DB Lincoln classification lock.
-assert(db.includes("facility_id TEXT DEFAULT 'LT_F22'") && db.includes("facility_name TEXT DEFAULT 'Lincoln'"), 'DB defaults must be LT_F22 / Lincoln');
+// DB Valley View classification lock.
+assert(db.includes("facility_id TEXT DEFAULT 'LT_F1'") && db.includes("facility_name TEXT DEFAULT 'Valley View'"), 'DB defaults must be LT_F1 / Valley View');
 assert(db.includes("facility_id = ?')") || db.includes("facility_id = ?"), 'dashboard query must filter by facility');
 assert(!db.includes("door_assignment ILIKE '%165%'") && !db.includes("door_assignment ILIKE '%166%'"), 'DB migration must not quarantine docks 165/166');
-assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 2'"), 'Lincoln door patterns must remain classified to LT_F22');
+assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 2'"), 'Valley View door patterns must remain classified to LT_F1');
 
 // Drop Off Empty success behavior remains allowed only after ET success.
 assert(app.includes('doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";'), 'Drop Off Empty successful completion instruction must remain');
@@ -88,4 +89,4 @@ assert(compactServer.includes('req.on("aborted", onAborted);'), 'readBody must h
 assert(compactServer.includes('if (res.writableEnded || res.destroyed) return;'), 'sendJson must skip writes to disconnected responses');
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: strict Lincoln ET and assistance behavior is locked.');
+console.log('Regression guard passed: strict Valley View ET and assistance behavior is locked.');
