@@ -177,13 +177,24 @@ nextBtn.addEventListener("click", async () => {
     } else {
       nextBtn.textContent = "Complete";
       if (isDropOffEmpty()) {
-        showActionError("Drop off container / trailer at any open spot in the yard");
+        showLargeInstructionScreen("Drop off container / trailer at any open spot in the yard", "ET could not be created. Please see the employee for assistance.");
       } else if (isDropOffFull()) {
-        showActionError("Drop off container / trailer at any open spot in the yard");
+        showLargeInstructionScreen("Drop off container / trailer at any open spot in the yard", "ET could not be created. Please see the employee for assistance.");
       } else if (isPickupEmpty()) {
-        showActionError("Please proceed to pick up your empty");
+        showLargeInstructionScreen("Please proceed to pick up your empty", "ET could not be created. Please see the employee for assistance.");
       } else {
-        showActionError("Go to the door between docks 165 & 166 and see the employee");
+        const data = getFormData();
+        const identifiers = getLoadIdentifiers(data);
+        const validationKey = identifiers.join("|");
+        let fallbackResult = validationKey === lastValidatedRn && lastValidatedRnResult?.customer
+          ? lastValidatedRnResult
+          : await resolveCustomerFromIdentifiers(identifiers);
+        if (fallbackResult?.customer) {
+          const doorResult = await getDoorAssignmentWithStaging(fallbackResult.loadId || "", fallbackResult.customer);
+          showLargeInstructionScreen(doorResult.assignment, "Load was found in WMS, but ET could not be created. Please see the employee for assistance.");
+        } else {
+          showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "ET could not be created. Please see the employee for assistance.");
+        }
       }
     }
     return;

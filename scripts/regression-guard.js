@@ -28,7 +28,7 @@ assert(!pkg.includes('driver-checkin-lincoln'), 'package metadata must not ident
 
 // Drop Off Empty behavior lock: never show dock/door fallback for empty drop-off submit failures.
 const compactApp = app.replace(/\s+/g, ' ');
-assert(compactApp.includes('nextBtn.textContent = \"Complete\"; if (isDropOffEmpty()) { showActionError(\"Drop off container / trailer at any open spot in the yard\");'), 'Drop Off Empty submit fallback must show yard open-spot instruction');
+assert(compactApp.includes('nextBtn.textContent = \"Complete\"; if (isDropOffEmpty()) { showLargeInstructionScreen(\"Drop off container / trailer at any open spot in the yard\"'), 'Drop Off Empty submit fallback must show yard open-spot instruction as a large screen');
 assert(compactApp.includes('if (isDropOffEmpty()) { buildReview(); showScreen(currentScreen + 1);'), 'Drop Off Empty must skip PO/RN/Load validation');
 assert(app.includes('doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";'), 'Drop Off Empty completion screen must show yard open-spot instruction');
 
