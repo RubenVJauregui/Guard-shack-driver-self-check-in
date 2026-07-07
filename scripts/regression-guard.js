@@ -16,11 +16,11 @@ const pkg = read('package.json');
 const compactApp = app.replace(/\s+/g, ' ');
 const compactServer = server.replace(/\s+/g, ' ');
 
-// Facility/branding lock: this production app must remain Valley View / LT_F1.
-assert(server.includes('process.env.WMS_FACILITY_ID || "LT_F1"'), 'server.js must default WMS_FACILITY_ID to LT_F1 and allow env override');
+// Facility/branding lock: this production app must remain Lincoln / LT_F22.
+assert(server.includes('WMS_FACILITY_ID = "LT_F22"'), 'server.js must lock WMS_FACILITY_ID to LT_F22');
 assert(!server.includes('const WMS_FACILITY_ID = "LT_F22"'), 'server.js must not hardcode LT_F22');
-assert(index.includes('Driver Check-In — Valley View'), 'index.html title must remain Valley View');
-assert(dashboard.includes('data-facility="LT_F1"'), 'dashboard.html must remain scoped to LT_F1');
+assert(index.includes('Driver Check-In — Lincoln'), 'index.html title must remain Lincoln');
+assert(dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must remain scoped to LT_F22');
 assert(!index.includes('Driver Check-In — Lincoln'), 'index.html must not revert to Lincoln title');
 assert(!dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must not revert to LT_F22');
 assert(!pkg.includes('driver-checkin-lincoln'), 'package metadata must not identify this app as Lincoln');
@@ -70,4 +70,4 @@ assert(compactServer.includes('req.on("aborted", onAborted);'), 'readBody must h
 assert(compactServer.includes('if (res.writableEnded || res.destroyed) return;'), 'sendJson must skip writes to disconnected responses');
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: stabilized Valley View check-in app behavior is locked.');
+console.log('Regression guard passed: stabilized Lincoln check-in app behavior is locked.');
