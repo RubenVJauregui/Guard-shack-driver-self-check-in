@@ -37,8 +37,14 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet1'), 'index.html must load cache-busted app.js?v=strictet1');
-assert(index.includes('styles.css?v=strictet1'), 'index.html must load cache-busted styles.css?v=strictet1');
+assert(index.includes('app.js?v=strictet2'), 'index.html must load cache-busted app.js?v=strictet2');
+assert(index.includes('styles.css?v=strictet2'), 'index.html must load cache-busted styles.css?v=strictet2');
+
+
+// Driver form field lock.
+assert(!index.includes('Reference #<input name="referenceNo"'), 'Step 3 must not show a Reference # input box');
+assert(!index.includes('name="referenceNo"'), 'Reference # field must not exist in the public form');
+assert(index.includes('PO / RN / Load #<input name="loadNo"'), 'Step 3 must show only the PO / RN / Load # box for load reference entry');
 
 // Door routing and assistance lock.
 assert(app.includes('const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";'), 'normal Excel default door must remain docks 165/166');
