@@ -7,14 +7,42 @@ function getPool() {
   return pool;
 }
 
-const NON_LINCOLN_DOOR_PATTERNS = ['165', '166', 'dock 2', 'docks 165', 'docks 166'];
+const NON_LINCOLN_DOOR_PATTERNS = ['165', '166', 'dock 2', 'docks 165', 'docks 166', 'dock 45', 'dock 144', 'dock 70'];
+const NON_LINCOLN_CUSTOMER_PATTERNS = ['KARAKA', 'SIMPLE MODERN', 'GURUNANDA', 'NZXT', 'CMPC USA', 'WOODY FLAW', 'LENNOX', 'AMIEE LYNN', 'TPV USA', 'EUROMARKET', 'CRATE & BARREL', 'COME READY', 'HINT INC', 'SOURCE86', 'KACE TEA', 'ROAR BEVERAGES', 'WISMETTAC', 'ORGAIN', 'POMPEIAN', 'MAMMA CHIA', 'RISE BEVERAGES', 'ZEN BEVERAGE', 'RST', 'WATER PLUS', 'MUSE ORGANIC', 'NATURAL DECADENCE', 'MELOGRANO', 'SANS WINE', 'UPTIME ENERGY', 'PREFERRED BRANDS', 'RECOVERY SPORTS'];
+
+function lincolnDashboardWhere(alias = '') {
+  const p = alias ? `${alias}.` : '';
+  return `
+    ${p}facility_id = 'LT_F22'
+    AND coalesce(${p}door_assignment, '') NOT ILIKE '%Dock 45%'
+    AND coalesce(${p}door_assignment, '') NOT ILIKE '%dock 144%'
+    AND coalesce(${p}door_assignment, '') NOT ILIKE '%dock 70%'
+    AND coalesce(${p}door_assignment, '') NOT ILIKE '%docks 165%'
+    AND coalesce(${p}door_assignment, '') NOT ILIKE '%docks 166%'
+    AND coalesce(${p}facility_name, '') NOT ILIKE '%Valley View%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%KARAKA%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%SIMPLE MODERN%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%GURUNANDA%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%NZXT%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%CMPC USA%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%WOODY FLAW%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%LENNOX%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%AMIEE LYNN%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%TPV USA%'
+    AND coalesce(${p}customer, '') NOT ILIKE '%EUROMARKET%'
+  `;
+}
 
 function classifyFacility(record) {
   const door = String(record.door_assignment || '').toLowerCase();
+  const customer = String(record.customer || '').toUpperCase();
   for (const pat of NON_LINCOLN_DOOR_PATTERNS) {
     if (door.includes(pat)) return 'LEGACY_NON_LINCOLN';
   }
-  if (!door) return 'LEGACY_UNVERIFIED';
+  for (const c of NON_LINCOLN_CUSTOMER_PATTERNS) {
+    if (customer.includes(c)) return 'LEGACY_NON_LINCOLN';
+  }
+  if (!door && !customer) return 'LEGACY_UNVERIFIED';
   const lincolnDoors = ['docks 98', 'docks 97', 'docks 75', 'docks 74', 'docks 56', 'docks 55', 'dock 98'];
   for (const ld of lincolnDoors) {
     if (door.includes(ld)) return 'LT_F22';
@@ -74,7 +102,26 @@ async function initDb() {
 async function migrateLegacyRecords(p) {
   // Quarantine obvious legacy/non-Lincoln records even if a default facility was added later.
   await p.query(`UPDATE checkins SET facility_id='LEGACY_NON_LINCOLN', facility_name='Legacy (non-Lincoln)'
-    WHERE door_assignment ILIKE '%165%' OR door_assignment ILIKE '%166%' OR door_assignment ILIKE '%dock 2%'`);
+    WHERE facility_id = 'LT_F22' AND (
+       door_assignment ILIKE '%165%'
+       OR door_assignment ILIKE '%166%'
+       OR door_assignment ILIKE '%dock 2%'
+       OR door_assignment ILIKE '%dock 45%'
+       OR door_assignment ILIKE '%dock 144%'
+       OR door_assignment ILIKE '%dock 70%'
+       OR facility_name ILIKE '%Valley View%'
+       OR customer ILIKE '%KARAKA%'
+       OR customer ILIKE '%SIMPLE MODERN%'
+       OR customer ILIKE '%GURUNANDA%'
+       OR customer ILIKE '%NZXT%'
+       OR customer ILIKE '%CMPC USA%'
+       OR customer ILIKE '%WOODY FLAW%'
+       OR customer ILIKE '%LENNOX%'
+       OR customer ILIKE '%AMIEE LYNN%'
+       OR customer ILIKE '%TPV USA%'
+       OR customer ILIKE '%EUROMARKET%'
+       OR customer ILIKE '%CRATE & BARREL%'
+    )`);
 
   // Quarantine specific known non-Lincoln records confirmed as Lincoln LT_F22
   const knownNonLincolnETs = ['ET-1119142', 'ET-1119115', 'ET-1119113', 'ET-1119111'];
@@ -118,7 +165,8 @@ async function queryCheckins(q={}) {
   const page=Math.max(1, parseInt(q.page||'1',10)); const limit=Math.min(200, Math.max(1, parseInt(q.limit||'25',10)));
   const cond=[]; const params=[];
   const add=(sql,val)=>{params.push(val); cond.push(sql.replace('?', '$'+params.length));};
-  if (q.includeLegacy !== 'true') add('facility_id = ?', 'LT_F22');
+  if (q.includeLegacy !== 'true') cond.push(`(${lincolnDashboardWhere()})`);
+  else add('facility_id = ?', 'LT_F22');
   if(q.search){ const fields=['et_number','driver_name','carrier_name','equipment_no','customer','reference_no','load_no','po_no','receipt_id']; const parts=[]; for(const f of fields){params.push(`%${q.search}%`); parts.push(`${f} ILIKE $${params.length}`);} cond.push('('+parts.join(' OR ')+')'); }
   if(q.dateFrom) add('created_at >= ?', q.dateFrom);
   if(q.dateTo) add(`created_at < (?::date + interval '1 day')`, q.dateTo);
@@ -136,11 +184,11 @@ async function queryCheckins(q={}) {
   return {data,total,page,limit};
 }
 
-async function getSummary(){ const p=getPool(); if(!p) return {total:0,today:0,inbound:0,outbound:0}; const r=(await p.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) today, COUNT(*) FILTER (WHERE direction='inbound') inbound, COUNT(*) FILTER (WHERE direction='outbound') outbound FROM checkins WHERE facility_id='LT_F22'`)).rows[0]; return Object.fromEntries(Object.entries(r).map(([k,v])=>[k,Number(v)])); }
+async function getSummary(){ const p=getPool(); if(!p) return {total:0,today:0,inbound:0,outbound:0}; const r=(await p.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) today, COUNT(*) FILTER (WHERE direction='inbound') inbound, COUNT(*) FILTER (WHERE direction='outbound') outbound FROM checkins WHERE ${lincolnDashboardWhere()}`)).rows[0]; return Object.fromEntries(Object.entries(r).map(([k,v])=>[k,Number(v)])); }
 
 async function getCheckinById(id) {
   const p = getPool(); if (!p) return null;
-  const result = await p.query("SELECT * FROM checkins WHERE id = $1 AND facility_id = 'LT_F22'", [id]);
+  const result = await p.query(`SELECT * FROM checkins WHERE id = $1 AND ${lincolnDashboardWhere()}`, [id]);
   return result.rows[0] || null;
 }
 

@@ -1,65 +1,34 @@
-// Door assignment rules from latest "Door asignment.xlsx" only
-// Column B: "Go to the door between docks 165 & 166"
-const doorBetween165_166Customers = [
-  "RST",
-  "KING'S HAWAIIAN",
-  "MAMMA CHIA",
-  "MELOGRANO DRINKS LLC",
-  "MUSE ORGANIC LLC",
-  "NATURAL DECADENCE LLC",
-  "ORGAIN, LLC",
-  "OVERSEAS FOOD TRADING",
-  "POMPEIAN INC",
-  "PREFERRED BRANDS",
-  "RECOVERY SPORTS LLC",
-  "RISE BEVERAGES LLC DBA",
-  "SANS WINE & SPIRITS",
-  "UPTIME ENERGY INC",
-  "WATER PLUS LLC",
-  "ZEN BEVERAGE LLC",
-  "TCL - Solar Cell"
-];
-
-// Column D: "Go to the door at dock 144"
-const door144Customers = [
+// Lincoln LT_F22 door assignment rules (source: "Copy of Door asignment Lincoln.xlsx")
+// Column A: "Go to the door between docks 98 & 97"
+const docks98_97Customers = [
+  "UNIS TRANSPORTATION",
   "ALL MARKET INC / VITA COCO",
-  "COME READY FOODS",
-  "HINT INC",
-  "SOURCE86",
-  "KACE TEA LLC",
-  "PLEASS GLOBAL LIMITED",
-  "PREFERRED BRANDS",
-  "RITUAL BEVERAGE COMPANY",
-  "ROAR BEVERAGES INC",
-  "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
-  "SPLENDOR WATER LLC",
-  "WISMETTAC ASIAN FOODS"
+  "SAFE CATCH",
+  "GALANZ",
+  "TCL",
+  "SPLENDOR",
+  "STRON",
+  "KING COFFEE",
+  "ZURU",
+  "DELMAR"
 ];
 
-// Column F: "Go to the door at Dock 45"
-const door45Customers = [
-  "TCL NORTH AMERICA",
-  "LENNOX INDUSTRIES INC.",
-  "AMIEE LYNN, LNC.",
-  "KARAKA, LLC",
-  "NZXT",
-  "CMPC USA (Cut Paper and Rolls)",
-  "WOODY FLAW CREST INC",
-  "North Star",
-  "CMPC USA",
-  "La Jolla",
-  "ESI",
-  "TPV USA",
-  "Gurunanda",
-  "the only bean"
+// Column C: "Go to the door between docks 75 & 74"
+const docks75_74Customers = [
+  "NATUS",
+  "STRON",
+  "FED EX UPS"
 ];
 
-// Column H: "Go to Dock 70"
-const door70Customers = [
-  "Euromarket / Crate & Barrel"
+// Column E: "Go to the door between docks 56 & 55"
+const docks56_55Customers = [
+  "SCHINDLER",
+  "LIPPERT",
+  "NIAGARA BOTTLING LLC-RESIN",
+  "MAMMC"
 ];
 
-const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";
+const LINCOLN_DEFAULT_DOOR = "Go to the door between docks 98 & 97";
 
 const rnToCustomerMap = {};
 
@@ -94,7 +63,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...doorBetween165_166Customers, ...door144Customers, ...door45Customers, ...door70Customers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...docks98_97Customers, ...docks75_74Customers, ...docks56_55Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -868,21 +837,18 @@ function isRealDoorAssignment(value) {
 
 function getDoorAssignment(customerValue) {
   const normalized = normalizeForDoorMatch(customerValue);
-  if (!normalized) return EXCEL_DEFAULT_DOOR;
+  if (!normalized) return LINCOLN_DEFAULT_DOOR;
 
-  if (doorBetween165_166Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 165 & 166";
+  if (docks75_74Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door between docks 75 & 74";
   }
-  if (door144Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door at dock 144";
+  if (docks56_55Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door between docks 56 & 55";
   }
-  if (door45Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door at Dock 45";
+  if (docks98_97Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door between docks 98 & 97";
   }
-  if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to Dock 70";
-  }
-  return EXCEL_DEFAULT_DOOR;
+  return LINCOLN_DEFAULT_DOOR;
 }
 
 function normalizeForDoorMatch(value = "") {
