@@ -1,34 +1,65 @@
-// Lincoln LT_F22 door assignment rules (source: "Copy of Door asignment Lincoln.xlsx")
-// Column A: "Go to the door between docks 98 & 97"
-const docks98_97Customers = [
-  "UNIS TRANSPORTATION",
+// Door assignment rules from latest "Door asignment.xlsx" only
+// Column B: "Go to the door between docks 165 & 166"
+const doorBetween165_166Customers = [
+  "RST",
+  "KING'S HAWAIIAN",
+  "MAMMA CHIA",
+  "MELOGRANO DRINKS LLC",
+  "MUSE ORGANIC LLC",
+  "NATURAL DECADENCE LLC",
+  "ORGAIN, LLC",
+  "OVERSEAS FOOD TRADING",
+  "POMPEIAN INC",
+  "PREFERRED BRANDS",
+  "RECOVERY SPORTS LLC",
+  "RISE BEVERAGES LLC DBA",
+  "SANS WINE & SPIRITS",
+  "UPTIME ENERGY INC",
+  "WATER PLUS LLC",
+  "ZEN BEVERAGE LLC",
+  "TCL - Solar Cell"
+];
+
+// Column D: "Go to the door at dock 144"
+const door144Customers = [
   "ALL MARKET INC / VITA COCO",
-  "SAFE CATCH",
-  "GALANZ",
-  "TCL",
-  "SPLENDOR",
-  "STRON",
-  "KING COFFEE",
-  "ZURU",
-  "DELMAR"
+  "COME READY FOODS",
+  "HINT INC",
+  "SOURCE86",
+  "KACE TEA LLC",
+  "PLEASS GLOBAL LIMITED",
+  "PREFERRED BRANDS",
+  "RITUAL BEVERAGE COMPANY",
+  "ROAR BEVERAGES INC",
+  "SOUTHERN GLAZER'S WINE AND SPIRITS, LLC",
+  "SPLENDOR WATER LLC",
+  "WISMETTAC ASIAN FOODS"
 ];
 
-// Column C: "Go to the door between docks 75 & 74"
-const docks75_74Customers = [
-  "NATUS",
-  "STRON",
-  "FED EX UPS"
+// Column F: "Go to the door at Dock 45"
+const door45Customers = [
+  "TCL NORTH AMERICA",
+  "LENNOX INDUSTRIES INC.",
+  "AMIEE LYNN, LNC.",
+  "KARAKA, LLC",
+  "NZXT",
+  "CMPC USA (Cut Paper and Rolls)",
+  "WOODY FLAW CREST INC",
+  "North Star",
+  "CMPC USA",
+  "La Jolla",
+  "ESI",
+  "TPV USA",
+  "Gurunanda",
+  "the only bean"
 ];
 
-// Column E: "Go to the door between docks 56 & 55"
-const docks56_55Customers = [
-  "SCHINDLER",
-  "LIPPERT",
-  "NIAGARA BOTTLING LLC-RESIN",
-  "MAMMC"
+// Column H: "Go to Dock 70"
+const door70Customers = [
+  "Euromarket / Crate & Barrel"
 ];
 
-const LINCOLN_DEFAULT_DOOR = "Go to the door between docks 98 & 97";
+const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";
 
 const rnToCustomerMap = {};
 
@@ -44,6 +75,9 @@ const screenTitles = [
 const form = document.querySelector("#checkinForm");
 const screens = [...document.querySelectorAll(".screen")];
 const completeScreen = document.querySelector(".complete-screen");
+const completeEyebrow = completeScreen?.querySelector(".eyebrow");
+const completeHeading = completeScreen?.querySelector("h2");
+const completeSuccessMark = completeScreen?.querySelector(".success-mark");
 const dots = [...document.querySelectorAll(".progress-dot")];
 const nextBtn = document.querySelector("#nextBtn");
 const backBtn = document.querySelector("#backBtn");
@@ -63,7 +97,7 @@ const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
 
-const allCustomers = [...new Set([...docks98_97Customers, ...docks75_74Customers, ...docks56_55Customers])].sort((a, b) => a.localeCompare(b));
+const allCustomers = [...new Set([...doorBetween165_166Customers, ...door144Customers, ...door45Customers, ...door70Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
   customerList.innerHTML = allCustomers.map((customer) => `<option value="${escapeHtml(customer)}"></option>`).join("");
 }
@@ -123,7 +157,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message
-const FALLBACK_AFTER_MAX_ATTEMPTS = "Please see the employee for door assignment";
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Please see the employee for assistance";
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -312,6 +346,18 @@ function setYardInstructionMode(enabled) {
   completeScreen.classList.toggle("yard-instruction-mode", Boolean(enabled));
 }
 
+function setCompleteHeader(mode = "complete") {
+  if (mode === "assistance") {
+    if (completeEyebrow) completeEyebrow.textContent = "Assistance Required";
+    if (completeHeading) completeHeading.textContent = "Please see the employee";
+    if (completeSuccessMark) completeSuccessMark.textContent = "!";
+  } else {
+    if (completeEyebrow) completeEyebrow.textContent = "Complete Check-in";
+    if (completeHeading) completeHeading.textContent = "Check in complete";
+    if (completeSuccessMark) completeSuccessMark.textContent = "✓";
+  }
+}
+
 function showLargeInstructionScreen(message, details = "Please see the employee for assistance.") {
   setYardInstructionMode(true);
   doorInstruction.textContent = message;
@@ -323,11 +369,13 @@ function showLargeInstructionScreen(message, details = "Please see the employee 
   rnNumberEl.textContent = "";
   completionDetails.textContent = details;
   showScreen(5);
+  setCompleteHeader("assistance");
 }
 
 function showScreen(index) {
   clearActionError();
   if (index !== 5) setYardInstructionMode(false);
+  if (index === 5) setCompleteHeader("complete");
   currentScreen = index;
   screens.forEach((screen, screenIndex) => screen.classList.toggle("active", screenIndex === index));
   dots.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex <= Math.min(index, 4)));
@@ -613,8 +661,6 @@ async function completeCheckin() {
         doorAssignment: assignment,
         doorSource: doorResult.source || "",
         stagedLocation: doorResult.stagedLocation || "",
-        dockId: doorResult.dockId || doorResult.locationId || "",
-        facilityVerified: Boolean(wmsResult.facilityVerified),
         hasDriverPhoto: Boolean(form.elements.driverPhoto?.files?.length),
         hasEquipmentPhoto: Boolean(form.elements.equipmentPhoto?.files?.length),
         hasLoadPhoto: Boolean(form.elements.loadPhoto?.files?.length),
@@ -837,18 +883,21 @@ function isRealDoorAssignment(value) {
 
 function getDoorAssignment(customerValue) {
   const normalized = normalizeForDoorMatch(customerValue);
-  if (!normalized) return LINCOLN_DEFAULT_DOOR;
+  if (!normalized) return EXCEL_DEFAULT_DOOR;
 
-  if (docks75_74Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 75 & 74";
+  if (doorBetween165_166Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door between docks 165 & 166";
   }
-  if (docks56_55Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 56 & 55";
+  if (door144Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door at dock 144";
   }
-  if (docks98_97Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 98 & 97";
+  if (door45Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to the door at Dock 45";
   }
-  return LINCOLN_DEFAULT_DOOR;
+  if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
+    return "Go to Dock 70";
+  }
+  return EXCEL_DEFAULT_DOOR;
 }
 
 function normalizeForDoorMatch(value = "") {

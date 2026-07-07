@@ -16,18 +16,18 @@ const pkg = read('package.json');
 const compactApp = app.replace(/\s+/g, ' ');
 const compactServer = server.replace(/\s+/g, ' ');
 
-// Facility/branding lock: this production app must remain Lincoln / LT_F22.
-assert(server.includes('process.env.WMS_FACILITY_ID || "LT_F22"'), 'server.js must default WMS_FACILITY_ID to LT_F22 and allow env override');
+// Facility/branding lock: this production app must remain Valley View / LT_F1.
+assert(server.includes('process.env.WMS_FACILITY_ID || "LT_F1"'), 'server.js must default WMS_FACILITY_ID to LT_F1 and allow env override');
 assert(!server.includes('const WMS_FACILITY_ID = "LT_F22"'), 'server.js must not hardcode LT_F22');
-assert(index.includes('Driver Check-In — Lincoln'), 'index.html title must remain Lincoln');
-assert(dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must remain scoped to LT_F22');
+assert(index.includes('Driver Check-In — Valley View'), 'index.html title must remain Valley View');
+assert(dashboard.includes('data-facility="LT_F1"'), 'dashboard.html must remain scoped to LT_F1');
 assert(!index.includes('Driver Check-In — Lincoln'), 'index.html must not revert to Lincoln title');
 assert(!dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must not revert to LT_F22');
 assert(!pkg.includes('driver-checkin-lincoln'), 'package metadata must not identify this app as Lincoln');
 
 // Asset cache-busting lock: phones must not keep stale JS/CSS.
-assert(index.includes('app.js?v=etlock1'), 'index.html must load cache-busted app.js?v=etlock1');
-assert(index.includes('styles.css?v=etlock1'), 'index.html must load cache-busted styles.css?v=etlock1');
+assert(index.includes('app.js?v=etlock2'), 'index.html must load cache-busted app.js?v=etlock2');
+assert(index.includes('styles.css?v=etlock2'), 'index.html must load cache-busted styles.css?v=etlock2');
 
 // Door routing lock.
 assert(app.includes('const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";'), 'unlisted valid WMS customers must ask employee for door assignment');
@@ -38,6 +38,8 @@ assert(app.includes('"ALL MARKET INC / VITA COCO"') && app.includes('return "Go 
 assert(app.includes('return "Go to the door between docks 165 & 166";'), 'Column B mapping to docks 165/166 must remain for listed customers only');
 
 // Lookup/complete-flow UX lock.
+assert(app.includes('setCompleteHeader("assistance")'), 'assistance fallback screen must not say Check in complete');
+assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = "Please see the employee for assistance";'), 'third failed lookup must show assistance, not door assignment');
 assert(compactApp.includes('if (rnLookupAttempts >= 3) { showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS'), 'third failed lookup must use large instruction screen');
 assert(compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS, but ET could not be created.'), 'valid-load ET fallback must show large instruction screen, not inline red error');
 
@@ -70,4 +72,4 @@ assert(compactServer.includes('req.on("aborted", onAborted);'), 'readBody must h
 assert(compactServer.includes('if (res.writableEnded || res.destroyed) return;'), 'sendJson must skip writes to disconnected responses');
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: stabilized Lincoln check-in app behavior is locked.');
+console.log('Regression guard passed: stabilized Valley View check-in app behavior is locked.');

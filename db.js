@@ -7,42 +7,14 @@ function getPool() {
   return pool;
 }
 
-const NON_LINCOLN_DOOR_PATTERNS = ['165', '166', 'dock 2', 'docks 165', 'docks 166', 'dock 45', 'dock 144', 'dock 70'];
-const NON_LINCOLN_CUSTOMER_PATTERNS = ['KARAKA', 'SIMPLE MODERN', 'GURUNANDA', 'NZXT', 'CMPC USA', 'WOODY FLAW', 'LENNOX', 'AMIEE LYNN', 'TPV USA', 'EUROMARKET', 'CRATE & BARREL', 'COME READY', 'HINT INC', 'SOURCE86', 'KACE TEA', 'ROAR BEVERAGES', 'WISMETTAC', 'ORGAIN', 'POMPEIAN', 'MAMMA CHIA', 'RISE BEVERAGES', 'ZEN BEVERAGE', 'RST', 'WATER PLUS', 'MUSE ORGANIC', 'NATURAL DECADENCE', 'MELOGRANO', 'SANS WINE', 'UPTIME ENERGY', 'PREFERRED BRANDS', 'RECOVERY SPORTS'];
-
-function lincolnDashboardWhere(alias = '') {
-  const p = alias ? `${alias}.` : '';
-  return `
-    ${p}facility_id = 'LT_F22'
-    AND coalesce(${p}door_assignment, '') NOT ILIKE '%Dock 45%'
-    AND coalesce(${p}door_assignment, '') NOT ILIKE '%dock 144%'
-    AND coalesce(${p}door_assignment, '') NOT ILIKE '%dock 70%'
-    AND coalesce(${p}door_assignment, '') NOT ILIKE '%docks 165%'
-    AND coalesce(${p}door_assignment, '') NOT ILIKE '%docks 166%'
-    AND coalesce(${p}facility_name, '') NOT ILIKE '%Valley View%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%KARAKA%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%SIMPLE MODERN%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%GURUNANDA%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%NZXT%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%CMPC USA%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%WOODY FLAW%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%LENNOX%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%AMIEE LYNN%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%TPV USA%'
-    AND coalesce(${p}customer, '') NOT ILIKE '%EUROMARKET%'
-  `;
-}
+const NON_LINCOLN_DOOR_PATTERNS = ['165', '166', 'dock 2', 'docks 165', 'docks 166'];
 
 function classifyFacility(record) {
   const door = String(record.door_assignment || '').toLowerCase();
-  const customer = String(record.customer || '').toUpperCase();
   for (const pat of NON_LINCOLN_DOOR_PATTERNS) {
     if (door.includes(pat)) return 'LEGACY_NON_LINCOLN';
   }
-  for (const c of NON_LINCOLN_CUSTOMER_PATTERNS) {
-    if (customer.includes(c)) return 'LEGACY_NON_LINCOLN';
-  }
-  if (!door && !customer) return 'LEGACY_UNVERIFIED';
+  if (!door) return 'LEGACY_UNVERIFIED';
   const lincolnDoors = ['docks 98', 'docks 97', 'docks 75', 'docks 74', 'docks 56', 'docks 55', 'dock 98'];
   for (const ld of lincolnDoors) {
     if (door.includes(ld)) return 'LT_F22';
@@ -65,15 +37,15 @@ async function initDb() {
     has_load_photo BOOLEAN DEFAULT false, photo_count INTEGER DEFAULT 0, identity_url TEXT,
     basic_info_attached BOOLEAN DEFAULT false, trip_info_attached BOOLEAN DEFAULT false,
     email_notification_sent BOOLEAN DEFAULT false, status TEXT DEFAULT 'completed', raw JSONB,
-    facility_id TEXT DEFAULT 'LT_F22', facility_name TEXT DEFAULT 'Lincoln',
+    facility_id TEXT DEFAULT 'LT_F1', facility_name TEXT DEFAULT 'Valley View',
     assigned_to TEXT, assigned_by TEXT, assigned_at TIMESTAMPTZ,
     assignment_status TEXT DEFAULT 'Unassigned', assignment_notes TEXT,
     updated_at TIMESTAMPTZ, updated_by TEXT, update_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
   const migrations = [
-    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_id TEXT DEFAULT 'LT_F22'",
-    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_name TEXT DEFAULT 'Lincoln'",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_id TEXT DEFAULT 'LT_F1'",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_name TEXT DEFAULT 'Valley View'",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS assigned_to TEXT",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS assigned_by TEXT",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ",
@@ -102,32 +74,7 @@ async function initDb() {
 async function migrateLegacyRecords(p) {
   // Quarantine obvious legacy/non-Lincoln records even if a default facility was added later.
   await p.query(`UPDATE checkins SET facility_id='LEGACY_NON_LINCOLN', facility_name='Legacy (non-Lincoln)'
-    WHERE facility_id = 'LT_F22' AND (
-       door_assignment ILIKE '%165%'
-       OR door_assignment ILIKE '%166%'
-       OR door_assignment ILIKE '%dock 2%'
-       OR door_assignment ILIKE '%dock 45%'
-       OR door_assignment ILIKE '%dock 144%'
-       OR door_assignment ILIKE '%dock 70%'
-       OR facility_name ILIKE '%Valley View%'
-       OR customer ILIKE '%KARAKA%'
-       OR customer ILIKE '%SIMPLE MODERN%'
-       OR customer ILIKE '%GURUNANDA%'
-       OR customer ILIKE '%NZXT%'
-       OR customer ILIKE '%CMPC USA%'
-       OR customer ILIKE '%WOODY FLAW%'
-       OR customer ILIKE '%LENNOX%'
-       OR customer ILIKE '%AMIEE LYNN%'
-       OR customer ILIKE '%TPV USA%'
-       OR customer ILIKE '%EUROMARKET%'
-       OR customer ILIKE '%CRATE & BARREL%'
-    )`);
-
-  // Quarantine specific known non-Lincoln records confirmed as Lincoln LT_F22
-  const knownNonLincolnETs = ['ET-1119142', 'ET-1119115', 'ET-1119113', 'ET-1119111'];
-  await p.query(`UPDATE checkins SET facility_id='NON_LINCOLN_QUARANTINED', facility_name='Non-Lincoln (quarantined)'
-    WHERE et_number = ANY($1) AND facility_id = 'LT_F22'`, [knownNonLincolnETs]);
-
+    WHERE door_assignment ILIKE '%165%' OR door_assignment ILIKE '%166%' OR door_assignment ILIKE '%dock 2%'`);
   const unclassified = await p.query("SELECT id, door_assignment FROM checkins WHERE facility_id IS NULL OR facility_id = ''");
   for (const row of unclassified.rows) {
     const facility = classifyFacility(row);
@@ -153,7 +100,7 @@ async function insertCheckin(r) {
     r.loadTypeGroup || loadTypeGroup(r.entryTask), r.referenceNo, r.loadNo, r.comments, r.customer, r.customerId, r.customerCode,
     r.direction, r.receiptId, r.poNo, r.loadId, r.wmsLoadNo, r.doorAssignment, !!r.hasDriverPhoto, !!r.hasEquipmentPhoto,
     !!r.hasLoadPhoto, r.photoCount || 0, r.identityUrl, !!r.basicInfoAttached, !!r.tripInfoAttached, !!r.emailNotificationSent,
-    r.status || 'completed', JSON.stringify(r.raw || r), 'LT_F22', 'Lincoln'
+    r.status || 'completed', JSON.stringify(r.raw || r), 'LT_F1', 'Valley View'
   ];
   const sql = `INSERT INTO checkins (et_number,driver_first_name,driver_last_name,driver_name,driver_phone,driver_license,driver_email,carrier_name,usdot,vehicle_type,license_plate,equipment_type,equipment_no,entry_task,load_type_group,reference_no,load_no,comments,customer,customer_id,customer_code,direction,receipt_id,po_no,load_id,wms_load_no,door_assignment,has_driver_photo,has_equipment_photo,has_load_photo,photo_count,identity_url,basic_info_attached,trip_info_attached,email_notification_sent,status,raw,facility_id,facility_name) VALUES (${vals.map((_,i)=>'$'+(i+1)).join(',')}) RETURNING id`;
   const result = await p.query(sql, vals);
@@ -165,8 +112,7 @@ async function queryCheckins(q={}) {
   const page=Math.max(1, parseInt(q.page||'1',10)); const limit=Math.min(200, Math.max(1, parseInt(q.limit||'25',10)));
   const cond=[]; const params=[];
   const add=(sql,val)=>{params.push(val); cond.push(sql.replace('?', '$'+params.length));};
-  if (q.includeLegacy !== 'true') cond.push(`(${lincolnDashboardWhere()})`);
-  else add('facility_id = ?', 'LT_F22');
+  if (q.includeLegacy !== 'true') add('facility_id = ?', 'LT_F1');
   if(q.search){ const fields=['et_number','driver_name','carrier_name','equipment_no','customer','reference_no','load_no','po_no','receipt_id']; const parts=[]; for(const f of fields){params.push(`%${q.search}%`); parts.push(`${f} ILIKE $${params.length}`);} cond.push('('+parts.join(' OR ')+')'); }
   if(q.dateFrom) add('created_at >= ?', q.dateFrom);
   if(q.dateTo) add(`created_at < (?::date + interval '1 day')`, q.dateTo);
@@ -184,11 +130,11 @@ async function queryCheckins(q={}) {
   return {data,total,page,limit};
 }
 
-async function getSummary(){ const p=getPool(); if(!p) return {total:0,today:0,inbound:0,outbound:0}; const r=(await p.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) today, COUNT(*) FILTER (WHERE direction='inbound') inbound, COUNT(*) FILTER (WHERE direction='outbound') outbound FROM checkins WHERE ${lincolnDashboardWhere()}`)).rows[0]; return Object.fromEntries(Object.entries(r).map(([k,v])=>[k,Number(v)])); }
+async function getSummary(){ const p=getPool(); if(!p) return {total:0,today:0,inbound:0,outbound:0}; const r=(await p.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) today, COUNT(*) FILTER (WHERE direction='inbound') inbound, COUNT(*) FILTER (WHERE direction='outbound') outbound FROM checkins WHERE facility_id='LT_F1'`)).rows[0]; return Object.fromEntries(Object.entries(r).map(([k,v])=>[k,Number(v)])); }
 
 async function getCheckinById(id) {
   const p = getPool(); if (!p) return null;
-  const result = await p.query(`SELECT * FROM checkins WHERE id = $1 AND ${lincolnDashboardWhere()}`, [id]);
+  const result = await p.query("SELECT * FROM checkins WHERE id = $1 AND facility_id = 'LT_F1'", [id]);
   return result.rows[0] || null;
 }
 
@@ -211,7 +157,7 @@ async function updateCheckin(id, fields, updatedBy, updateNotes) {
   if (updatedBy) { sets.push(`updated_by = $${idx}`); vals.push(updatedBy); idx++; }
   if (updateNotes) { sets.push(`update_notes = $${idx}`); vals.push(updateNotes); idx++; }
   vals.push(id);
-  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id = $${idx} AND facility_id='LT_F22' RETURNING *`;
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id = $${idx} AND facility_id='LT_F1' RETURNING *`;
   const result = await p.query(sql, vals);
   return result.rows[0] || null;
 }
@@ -226,7 +172,7 @@ async function updateAssignment(id, data) {
   if (data.assignedTo || data.assignmentStatus) { params.push(new Date().toISOString()); sets.push(`assigned_at=$${params.length}`); }
   if (!sets.length) return null;
   params.push(id);
-  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F22' RETURNING id, assigned_to, assigned_by, assigned_at, assignment_status, assignment_notes`;
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F1' RETURNING id, assigned_to, assigned_by, assigned_at, assignment_status, assignment_notes`;
   const result = await p.query(sql, params);
   return result.rows[0] || null;
 }
@@ -243,7 +189,7 @@ async function updateLoadTask(id, data) {
   if (!sets.length) return null;
   sets.push('updated_at=NOW()');
   params.push(id);
-  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F22' RETURNING *`;
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F1' RETURNING *`;
   const result = await p.query(sql, params);
   return result.rows[0] || null;
 }
