@@ -35,7 +35,7 @@ const WMS_USERNAME = process.env.WMS_USERNAME || "";
 const WMS_PASSWORD_B64 = process.env.WMS_PASSWORD_B64 || "";
 const WMS_PASSWORD_RAW = process.env.WMS_PASSWORD || "";
 const WMS_TENANT_ID = "LT";
-const WMS_FACILITY_ID = process.env.WMS_FACILITY_ID || "LT_F1";
+const WMS_FACILITY_ID = "LT_F22";
 const YMS_BASE_URL = process.env.YMS_BASE_URL || "https://traffic.item.com/api/yms";
 const TIMEZONE = process.env.TIMEZONE || "America/Los_Angeles";
 const OPERATOR_NOTIFICATION_RECIPIENT = process.env.OPERATOR_NOTIFICATION_RECIPIENT || "Juan.barragan@unisco.com";
@@ -48,7 +48,7 @@ const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
-const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Valley View Driver Check-In <no-reply@unisco.com>";
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Lincoln Driver Check-In <no-reply@unisco.com>";
 const ymsEtBySubmissionSignature = new Map();
 
 
@@ -63,7 +63,7 @@ function formatNotificationLines(etNumber, payload) {
   const equipment = payload.equipmentInfo || {};
   const trip = payload.tripInfo || {};
   return [
-    `A driver has completed check-in at Valley View (LT_F1).`,
+    `A driver has completed check-in at Lincoln (LT_F22).`,
     ``,
     `ET#: ${etNumber || ""}`,
     `Type: ${trip.direction === "inbound" ? "Inbound receipt" : "Outbound / yard task"}`,
@@ -90,7 +90,7 @@ async function sendCheckinEmailNotification(etNumber, payload) {
     return { sent: false, reason: "smtp_not_configured" };
   }
   const trip = payload.tripInfo || {};
-  const subjectParts = ["Valley View Driver Check-In", etNumber];
+  const subjectParts = ["Lincoln Driver Check-In", etNumber];
   if (trip.receiptId || trip.poNo || trip.loadNo) subjectParts.push(trip.receiptId || trip.poNo || trip.loadNo);
   const subject = subjectParts.filter(Boolean).join(" - ");
   const text = formatNotificationLines(etNumber, payload).join("\n");
@@ -249,9 +249,9 @@ async function sendStoredCheckinEmailNotification(record = {}) {
   const summary = pickupSummaryFromRecord(record);
   const driverName = record.driverName || record.driver_name || [record.driverFirstName, record.driverLastName].filter(Boolean).join(" ");
   const etNumber = record.etNumber || record.et_number || "";
-  const subject = ["Valley View Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
+  const subject = ["Lincoln Driver Check-In", etNumber, driverName].filter(Boolean).join(" - ");
   const lines = [
-    "A driver has completed check-in at Valley View (LT_F1).",
+    "A driver has completed check-in at Lincoln (LT_F22).",
     "",
     `Check-in link: ${checkinLink}`,
     `Dashboard: ${dashboardLink}`,
@@ -276,7 +276,7 @@ async function sendStoredCheckinEmailNotification(record = {}) {
   ];
   const text = lines.join("\n");
   const html = `<div style="font-family:Arial,sans-serif;line-height:1.45;color:#111">
-    <h2 style="margin:0 0 12px">Valley View Driver Check-In</h2>
+    <h2 style="margin:0 0 12px">Lincoln Driver Check-In</h2>
     <p><strong>Check-in link:</strong> <a href="${escapeHtmlServer(checkinLink)}">${escapeHtmlServer(checkinLink)}</a></p>
     <p><strong>Dock door assignment:</strong> ${escapeHtmlServer(doorAssignment)}</p>
     <p><strong>Pickup summary:</strong> ${escapeHtmlServer(summary)}</p>
@@ -1075,7 +1075,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         entryId: record.et_number || "",
         loadMode,
         equipmentType: record.equipment_type || "",
-        note: `Valley View check-in #${id}. Driver: ${record.driver_name || ""}. ET: ${record.et_number || ""}.`
+        note: `Lincoln check-in #${id}. Driver: ${record.driver_name || ""}. ET: ${record.et_number || ""}.`
       });
       if (taskResult.taskId) {
         await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskId: taskResult.taskId, loadTaskStatus: "created", loadTaskError: null, dockId });
@@ -1918,7 +1918,7 @@ async function autoCreateLoadTask(checkinId, record) {
     entryId: etNumber,
     loadMode,
     equipmentType: record.equipmentType || record.equipment_type || "",
-    note: `Auto-assigned Valley View check-in #${checkinId}. Driver: ${driverName}. ET: ${etNumber}.`
+    note: `Auto-assigned Lincoln check-in #${checkinId}. Driver: ${driverName}. ET: ${etNumber}.`
   });
 
   if (taskResult.taskId) {
@@ -1962,9 +1962,9 @@ async function autoSendOpsEmail(checkinId, record, loadTaskResult) {
     taskLine = `Load task: ${loadTaskResult.status}. ${loadTaskResult.error || ""}`;
   }
 
-  const subject = `Valley View Check-In ${etNumber ? "ET " + etNumber : "#" + checkinId} - ${driverName || "Driver"} - ${direction}`;
+  const subject = `Lincoln Check-In ${etNumber ? "ET " + etNumber : "#" + checkinId} - ${driverName || "Driver"} - ${direction}`;
   const lines = [
-    `Driver check-in completed at Valley View (LT_F1).`,
+    `Driver check-in completed at Lincoln (LT_F22).`,
     ``,
     `ET#: ${etNumber || "N/A"}`,
     `Direction: ${direction}`,
@@ -1991,7 +1991,7 @@ async function autoSendOpsEmail(checkinId, record, loadTaskResult) {
 
   const text = lines.join("\n");
   const html = `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
-    <h2 style="margin:0 0 8px">Valley View Driver Check-In</h2>
+    <h2 style="margin:0 0 8px">Lincoln Driver Check-In</h2>
     <pre style="white-space:pre-wrap;font-family:Arial,sans-serif">${escapeHtmlServer(text)}</pre>
   </div>`;
 
