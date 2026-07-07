@@ -37,15 +37,15 @@ async function initDb() {
     has_load_photo BOOLEAN DEFAULT false, photo_count INTEGER DEFAULT 0, identity_url TEXT,
     basic_info_attached BOOLEAN DEFAULT false, trip_info_attached BOOLEAN DEFAULT false,
     email_notification_sent BOOLEAN DEFAULT false, status TEXT DEFAULT 'completed', raw JSONB,
-    facility_id TEXT DEFAULT 'LT_F1', facility_name TEXT DEFAULT 'Valley View',
+    facility_id TEXT DEFAULT 'LT_F22', facility_name TEXT DEFAULT 'Lincoln',
     assigned_to TEXT, assigned_by TEXT, assigned_at TIMESTAMPTZ,
     assignment_status TEXT DEFAULT 'Unassigned', assignment_notes TEXT,
     updated_at TIMESTAMPTZ, updated_by TEXT, update_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
   const migrations = [
-    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_id TEXT DEFAULT 'LT_F1'",
-    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_name TEXT DEFAULT 'Valley View'",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_id TEXT DEFAULT 'LT_F22'",
+    "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS facility_name TEXT DEFAULT 'Lincoln'",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS assigned_to TEXT",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS assigned_by TEXT",
     "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ",
@@ -106,7 +106,7 @@ async function insertCheckin(r) {
     r.loadTypeGroup || loadTypeGroup(r.entryTask), r.referenceNo, r.loadNo, r.comments, r.customer, r.customerId, r.customerCode,
     r.direction, r.receiptId, r.poNo, r.loadId, r.wmsLoadNo, r.doorAssignment, !!r.hasDriverPhoto, !!r.hasEquipmentPhoto,
     !!r.hasLoadPhoto, r.photoCount || 0, r.identityUrl, !!r.basicInfoAttached, !!r.tripInfoAttached, !!r.emailNotificationSent,
-    r.status || 'completed', JSON.stringify(r.raw || r), 'LT_F1', 'Valley View'
+    r.status || 'completed', JSON.stringify(r.raw || r), 'LT_F22', 'Lincoln'
   ];
   const sql = `INSERT INTO checkins (et_number,driver_first_name,driver_last_name,driver_name,driver_phone,driver_license,driver_email,carrier_name,usdot,vehicle_type,license_plate,equipment_type,equipment_no,entry_task,load_type_group,reference_no,load_no,comments,customer,customer_id,customer_code,direction,receipt_id,po_no,load_id,wms_load_no,door_assignment,has_driver_photo,has_equipment_photo,has_load_photo,photo_count,identity_url,basic_info_attached,trip_info_attached,email_notification_sent,status,raw,facility_id,facility_name) VALUES (${vals.map((_,i)=>'$'+(i+1)).join(',')}) RETURNING id`;
   const result = await p.query(sql, vals);
@@ -118,7 +118,7 @@ async function queryCheckins(q={}) {
   const page=Math.max(1, parseInt(q.page||'1',10)); const limit=Math.min(200, Math.max(1, parseInt(q.limit||'25',10)));
   const cond=[]; const params=[];
   const add=(sql,val)=>{params.push(val); cond.push(sql.replace('?', '$'+params.length));};
-  if (q.includeLegacy !== 'true') add('facility_id = ?', 'LT_F1');
+  if (q.includeLegacy !== 'true') add('facility_id = ?', 'LT_F22');
   if(q.search){ const fields=['et_number','driver_name','carrier_name','equipment_no','customer','reference_no','load_no','po_no','receipt_id']; const parts=[]; for(const f of fields){params.push(`%${q.search}%`); parts.push(`${f} ILIKE $${params.length}`);} cond.push('('+parts.join(' OR ')+')'); }
   if(q.dateFrom) add('created_at >= ?', q.dateFrom);
   if(q.dateTo) add(`created_at < (?::date + interval '1 day')`, q.dateTo);
@@ -136,11 +136,11 @@ async function queryCheckins(q={}) {
   return {data,total,page,limit};
 }
 
-async function getSummary(){ const p=getPool(); if(!p) return {total:0,today:0,inbound:0,outbound:0}; const r=(await p.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) today, COUNT(*) FILTER (WHERE direction='inbound') inbound, COUNT(*) FILTER (WHERE direction='outbound') outbound FROM checkins WHERE facility_id='LT_F1'`)).rows[0]; return Object.fromEntries(Object.entries(r).map(([k,v])=>[k,Number(v)])); }
+async function getSummary(){ const p=getPool(); if(!p) return {total:0,today:0,inbound:0,outbound:0}; const r=(await p.query(`SELECT COUNT(*) total, COUNT(*) FILTER (WHERE created_at>=CURRENT_DATE) today, COUNT(*) FILTER (WHERE direction='inbound') inbound, COUNT(*) FILTER (WHERE direction='outbound') outbound FROM checkins WHERE facility_id='LT_F22'`)).rows[0]; return Object.fromEntries(Object.entries(r).map(([k,v])=>[k,Number(v)])); }
 
 async function getCheckinById(id) {
   const p = getPool(); if (!p) return null;
-  const result = await p.query("SELECT * FROM checkins WHERE id = $1 AND facility_id = 'LT_F1'", [id]);
+  const result = await p.query("SELECT * FROM checkins WHERE id = $1 AND facility_id = 'LT_F22'", [id]);
   return result.rows[0] || null;
 }
 
@@ -163,7 +163,7 @@ async function updateCheckin(id, fields, updatedBy, updateNotes) {
   if (updatedBy) { sets.push(`updated_by = $${idx}`); vals.push(updatedBy); idx++; }
   if (updateNotes) { sets.push(`update_notes = $${idx}`); vals.push(updateNotes); idx++; }
   vals.push(id);
-  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id = $${idx} AND facility_id='LT_F1' RETURNING *`;
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id = $${idx} AND facility_id='LT_F22' RETURNING *`;
   const result = await p.query(sql, vals);
   return result.rows[0] || null;
 }
@@ -178,7 +178,7 @@ async function updateAssignment(id, data) {
   if (data.assignedTo || data.assignmentStatus) { params.push(new Date().toISOString()); sets.push(`assigned_at=$${params.length}`); }
   if (!sets.length) return null;
   params.push(id);
-  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F1' RETURNING id, assigned_to, assigned_by, assigned_at, assignment_status, assignment_notes`;
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F22' RETURNING id, assigned_to, assigned_by, assigned_at, assignment_status, assignment_notes`;
   const result = await p.query(sql, params);
   return result.rows[0] || null;
 }
@@ -195,7 +195,7 @@ async function updateLoadTask(id, data) {
   if (!sets.length) return null;
   sets.push('updated_at=NOW()');
   params.push(id);
-  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F1' RETURNING *`;
+  const sql = `UPDATE checkins SET ${sets.join(', ')} WHERE id=$${params.length} AND facility_id='LT_F22' RETURNING *`;
   const result = await p.query(sql, params);
   return result.rows[0] || null;
 }
