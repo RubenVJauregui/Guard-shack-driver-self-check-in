@@ -59,7 +59,7 @@ const door70Customers = [
   "Euromarket / Crate & Barrel"
 ];
 
-const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
+const EXCEL_DEFAULT_DOOR = "Go to the door at Dock 45";
 
 const rnToCustomerMap = {};
 
