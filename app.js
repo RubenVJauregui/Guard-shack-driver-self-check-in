@@ -787,6 +787,15 @@ async function saveIdentityRecord(identityRecord) {
   }
 }
 
+
+async function getDoorAssignmentWithStaging(loadId, customerValue) {
+  return {
+    assignment: getDoorAssignment(customerValue),
+    source: "excel",
+    stagedLocation: ""
+  };
+}
+
 function getDoorAssignment(customerValue) {
   const normalized = normalizeForDoorMatch(customerValue);
   if (!normalized) return EXCEL_DEFAULT_DOOR;
