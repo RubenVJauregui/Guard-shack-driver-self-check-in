@@ -486,6 +486,28 @@ function buildReview() {
     .join("");
 }
 
+async function recoverRecentlyCreatedEt({ loadId = "", equipmentNo = "", driverLicense = "" } = {}) {
+  if (!loadId) return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await wait(1500);
+    try {
+      const res = await fetch("/api/yms-entry-ticket-recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loadId, equipmentNo, driverLicense })
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.recovered && data.etNumber) return data;
+    } catch {}
+  }
+  return null;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function completeCheckin() {
   const data = getFormData();
   const rnValue = getLoadIdentifiers(data)[0] || "";
@@ -559,6 +581,21 @@ async function completeCheckin() {
       }
     } catch {
       // ET creation failed
+    }
+  }
+
+  // If the create response was lost/aborted, recover the ET from YMS before failing.
+  if (!etNumber && wmsResult.loadId) {
+    const recovered = await recoverRecentlyCreatedEt({
+      loadId: wmsResult.loadId,
+      equipmentNo: data.equipmentNo || "",
+      driverLicense: data.license || ""
+    });
+    if (recovered?.etNumber) {
+      etNumber = recovered.etNumber;
+      etStatus = { ...etStatus, recovered: true, entryStatus: recovered.entryStatus || "" };
+      sessionStorage.setItem("lastCreatedET", etNumber);
+      sessionStorage.setItem("lastCreatedET_rn", rnValue);
     }
   }
 

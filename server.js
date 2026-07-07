@@ -115,6 +115,112 @@ function escapeHtmlServer(value) {
 }
 
 
+
+function recoverYmsEntryTicket(ymsToken, criteria = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${YMS_BASE_URL}/workSpace/search-by-paging`);
+    const mod = url.protocol === "https:" ? https : http;
+    const body = JSON.stringify({
+      loadId: criteria.loadId || "",
+      equipmentNoLike: criteria.equipmentNo || "",
+      driverLicense: criteria.driverLicense || "",
+      createdSource: "SELF_CHECKIN",
+      pageSize: 5,
+      currentPage: 1,
+      sortingFields: [{ field: "createdTime", orderBy: "DESC" }]
+    });
+    const req = mod.request(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ymsToken}`,
+        "X-Tenant-ID": WMS_TENANT_ID,
+        "X-Yard-ID": WMS_FACILITY_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "Item-Time-Zone": TIMEZONE,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": String(Buffer.byteLength(body))
+      },
+      timeout: 8000
+    }, (res) => {
+      const statusCode = res.statusCode;
+      let responseBody = "";
+      res.on("data", (chunk) => { responseBody += chunk; });
+      res.on("end", () => {
+        console.log(`[YMS ET recovery] search status=${statusCode}`);
+        try {
+          const parsed = JSON.parse(responseBody || "{}");
+          const candidates = extractYmsList(parsed);
+          const loadId = criteria.loadId || "";
+          const equipmentNo = normalizeForCompare(criteria.equipmentNo || "");
+          const driverLicense = normalizeForCompare(criteria.driverLicense || "");
+          const match = candidates.find((entry) => {
+            const entryId = entry.entryId || entry.entry_id || entry.entryTicketId || entry.id || "";
+            if (!entryId) return false;
+            if (loadId && JSON.stringify(entry).includes(loadId) === false) return false;
+            const source = String(entry.createdSource || entry.created_source || "").toUpperCase();
+            if (source && source !== "SELF_CHECKIN") return false;
+            if (equipmentNo && !JSON.stringify(entry).toUpperCase().includes(equipmentNo)) return false;
+            if (driverLicense && !JSON.stringify(entry).toUpperCase().includes(driverLicense)) return false;
+            return true;
+          }) || null;
+          if (!match) {
+            resolve({ recovered: false });
+            return;
+          }
+          const etNumber = match.entryId || match.entry_id || match.entryTicketId || match.id || "";
+          resolve({
+            recovered: Boolean(etNumber),
+            etNumber,
+            entryStatus: match.entryStatus || match.entry_status || match.status || "",
+            raw: match
+          });
+        } catch (err) {
+          reject(new Error(`YMS ET recovery parse error: ${err.message}`));
+        }
+      });
+    });
+    req.on("error", (err) => reject(err));
+    req.on("timeout", () => { req.destroy(); reject(new Error("YMS ET recovery timeout")); });
+    req.write(body);
+    req.end();
+  });
+}
+
+function extractYmsList(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
+  const likely = [
+    value.data?.records,
+    value.data?.list,
+    value.data?.items,
+    value.data?.content,
+    value.data?.data,
+    value.records,
+    value.list,
+    value.items,
+    value.content
+  ];
+  for (const item of likely) {
+    if (Array.isArray(item)) return item;
+  }
+  if (value.data && typeof value.data === "object") {
+    for (const nested of Object.values(value.data)) {
+      if (Array.isArray(nested)) return nested;
+      if (nested && typeof nested === "object") {
+        for (const deeper of Object.values(nested)) {
+          if (Array.isArray(deeper)) return deeper;
+        }
+      }
+    }
+  }
+  return [];
+}
+
+function normalizeForCompare(value = "") {
+  return String(value).trim().toUpperCase();
+}
+
 function pickupSummaryFromRecord(record = {}) {
   const type = record.direction === "inbound" ? "inbound receipt" : "outbound / yard move";
   const task = record.entryTask || record.entry_task || "check-in";
@@ -959,6 +1065,24 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     } catch (err) {
       console.log(`[Ticket lookup] error: ${err.message}`);
       sendJson(res, { found: false, error: "Lookup failed" });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket-recover") {
+    try {
+      const body = await readBody(req);
+      const criteria = JSON.parse(body || "{}");
+      const ymsToken = await getYmsBearerToken();
+      if (!ymsToken) {
+        sendJson(res, { recovered: false, error: "YMS auth unavailable" });
+        return;
+      }
+      const result = await recoverYmsEntryTicket(ymsToken, criteria);
+      sendJson(res, result);
+    } catch (err) {
+      console.log(`[YMS ET recovery] endpoint error: ${err.message}`);
+      sendJson(res, { recovered: false, error: "ET recovery failed" });
     }
     return;
   }
