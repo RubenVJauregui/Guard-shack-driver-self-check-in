@@ -1,10 +1,12 @@
 {
-  "name": "driver-checkin-lincoln",
+  "name": "driver-checkin-valley-view",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "generate-qr": "node generate-qr.js"
+    "generate-qr": "node generate-qr.js",
+    "regression-guard": "node scripts/regression-guard.js",
+    "test": "npm run regression-guard"
   },
   "dependencies": {
     "nodemailer": "^6.9.16",
