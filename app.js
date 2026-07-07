@@ -59,7 +59,7 @@ const door70Customers = [
   "Euromarket / Crate & Barrel"
 ];
 
-const EXCEL_DEFAULT_DOOR = "Go to the door at Dock 45";
+const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";
 
 const rnToCustomerMap = {};
 
@@ -154,7 +154,7 @@ document.querySelector("#entryTaskSelect").addEventListener("change", () => {
 });
 
 // After 3 failed PO/RN/Load lookups, show this message
-const FALLBACK_AFTER_MAX_ATTEMPTS = EXCEL_DEFAULT_DOOR;
+const FALLBACK_AFTER_MAX_ATTEMPTS = "Please see the employee for door assignment";
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -476,6 +476,7 @@ function buildReview() {
     ["Vehicle", `${data.vehicleType || ""} ${data.plate || ""}`.trim()],
     ["Equipment", `${data.equipmentType || ""} ${data.equipmentNo || ""}`.trim()],
     ["Entry Task", data.entryTask || ""],
+    ["Reference #", data.referenceNo || ""],
     ["PO / RN / Load", data.loadNo || ""]
   ];
 
@@ -510,19 +511,21 @@ function wait(ms) {
 
 async function completeCheckin() {
   const data = getFormData();
-  const rnValue = getLoadIdentifiers(data)[0] || "";
+  const identifiers = getLoadIdentifiers(data);
+  const rnValue = identifiers[0] || "";
+  const duplicateEtSignature = getDuplicateEtSignature(data);
 
   // Check if ET was already created in this session (prevent duplicates)
   const existingEt = sessionStorage.getItem("lastCreatedET");
-  const existingRn = sessionStorage.getItem("lastCreatedET_rn");
+  const existingSignature = sessionStorage.getItem("lastCreatedET_signature");
   let etNumber = "";
   let etStatus = {};
-  if (existingEt && existingRn === rnValue) {
+  if (existingEt && existingSignature === duplicateEtSignature) {
     etNumber = existingEt;
   }
 
   // Resolve customer from RN/load lookup (WMS primary, local fallback)
-  const wmsResult = await resolveCustomerFromIdentifiers(getLoadIdentifiers(data));
+  const wmsResult = await resolveCustomerFromIdentifiers(identifiers);
   const resolvedCustomer = wmsResult.customer || data.customer || "";
   const doorResult = await getDoorAssignmentWithStaging(wmsResult.loadId || "", resolvedCustomer);
   const assignment = doorResult.assignment;
@@ -576,7 +579,7 @@ async function completeCheckin() {
           etNumber = etData.etNumber;
           etStatus = etData;
           sessionStorage.setItem("lastCreatedET", etNumber);
-          sessionStorage.setItem("lastCreatedET_rn", rnValue);
+          sessionStorage.setItem("lastCreatedET_signature", duplicateEtSignature);
         }
       }
     } catch {
@@ -595,7 +598,7 @@ async function completeCheckin() {
       etNumber = recovered.etNumber;
       etStatus = { ...etStatus, recovered: true, entryStatus: recovered.entryStatus || "" };
       sessionStorage.setItem("lastCreatedET", etNumber);
-      sessionStorage.setItem("lastCreatedET_rn", rnValue);
+      sessionStorage.setItem("lastCreatedET_signature", duplicateEtSignature);
     }
   }
 
@@ -605,7 +608,7 @@ async function completeCheckin() {
   }
 
   // Strip large photo from identity payload to prevent request hang/failure
-  const photoThumb = thumbnailDataUrl(localStorage.getItem("driverLicensePhoto") || "", 300);
+  const photoThumb = await thumbnailDataUrl(localStorage.getItem("driverLicensePhoto") || "", 300);
 
   const identityRecord = {
     firstName: data.firstName || "",
@@ -725,7 +728,19 @@ async function completeCheckin() {
 }
 
 function getLoadIdentifiers(data) {
-  return [...new Set([data.loadNo].map((value) => (value || "").trim()).filter(Boolean))];
+  return [...new Set([data.referenceNo, data.loadNo].map((value) => (value || "").trim()).filter(Boolean))];
+}
+
+function getDuplicateEtSignature(data) {
+  return [
+    data.referenceNo || "",
+    data.loadNo || "",
+    data.driverPhone || data.phone || "",
+    data.license || "",
+    data.equipmentNo || "",
+    data.plate || "",
+    data.entryTask || ""
+  ].map((value) => String(value).trim().toUpperCase()).join("|");
 }
 
 async function resolveCustomerFromIdentifiers(identifiers) {
@@ -786,13 +801,12 @@ async function resolveCustomerFromRn(rnValue) {
   }
 }
 
-function thumbnailDataUrl(dataUrl, maxDim) {
+async function thumbnailDataUrl(dataUrl, maxDim) {
   if (!dataUrl || !dataUrl.startsWith("data:image")) return dataUrl;
   try {
+    const img = await loadImageElement(dataUrl);
+    if (!img.width || !img.height) return "";
     const canvas = document.createElement("canvas");
-    const img = new Image();
-    img.src = dataUrl;
-    if (!img.width || !img.height) return dataUrl;
     const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
     canvas.width = Math.round(img.width * scale);
     canvas.height = Math.round(img.height * scale);
@@ -801,6 +815,15 @@ function thumbnailDataUrl(dataUrl, maxDim) {
   } catch {
     return "";
   }
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 }
 
 async function saveIdentityRecord(identityRecord) {
@@ -826,11 +849,33 @@ async function saveIdentityRecord(identityRecord) {
 
 
 async function getDoorAssignmentWithStaging(loadId, customerValue) {
+  if (loadId) {
+    try {
+      const res = await fetch(`/api/staging-door?loadId=${encodeURIComponent(loadId)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.assignment && isRealDoorAssignment(data.assignment)) {
+          return {
+            assignment: data.assignment,
+            source: data.source || "staging",
+            stagedLocation: data.stagedLocation || ""
+          };
+        }
+      }
+    } catch {}
+  }
   return {
     assignment: getDoorAssignment(customerValue),
     source: "excel",
     stagedLocation: ""
   };
+}
+
+function isRealDoorAssignment(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  if (/see the employee/i.test(text)) return false;
+  return /door|dock/i.test(text);
 }
 
 function getDoorAssignment(customerValue) {
@@ -928,10 +973,10 @@ function validateDriverLicenseImage(file) {
   showLicenseValidation("info", "Checking driver license photo...");
   nextBtn.disabled = true;
 
-  // Safety timeout: never leave button stuck longer than 4 seconds
+  // Safety reminder: keep waiting instead of incorrectly rejecting or accepting while validation is still running.
   driverPhotoValidationTimer = setTimeout(() => {
     if (driverPhotoValidating) {
-      finishValidation(true, "Driver license photo accepted.");
+      showLicenseValidation("info", "Still checking your driver license photo, please wait.");
     }
   }, 4000);
 

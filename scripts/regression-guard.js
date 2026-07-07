@@ -26,11 +26,11 @@ assert(!dashboard.includes('data-facility="LT_F22"'), 'dashboard.html must not r
 assert(!pkg.includes('driver-checkin-lincoln'), 'package metadata must not identify this app as Lincoln');
 
 // Asset cache-busting lock: phones must not keep stale JS/CSS.
-assert(index.includes('app.js?v=stabilized2'), 'index.html must load cache-busted app.js?v=stabilized2');
-assert(index.includes('styles.css?v=stabilized2'), 'index.html must load cache-busted styles.css?v=stabilized2');
+assert(index.includes('app.js?v=reviewed1'), 'index.html must load cache-busted app.js?v=reviewed1');
+assert(index.includes('styles.css?v=reviewed1'), 'index.html must load cache-busted styles.css?v=reviewed1');
 
 // Door routing lock.
-assert(app.includes('const EXCEL_DEFAULT_DOOR = "Go to the door at Dock 45";'), 'unlisted valid WMS customers must default to Dock 45');
+assert(app.includes('const EXCEL_DEFAULT_DOOR = "Please see the employee for door assignment";'), 'unlisted valid WMS customers must ask employee for door assignment');
 assert(app.includes('function getDoorAssignmentWithStaging'), 'Complete flow must include getDoorAssignmentWithStaging helper');
 assert(compactApp.includes('return { assignment: getDoorAssignment(customerValue), source: "excel", stagedLocation: "" };'), 'getDoorAssignmentWithStaging must return Excel door assignment');
 assert(app.includes('"Gurunanda"'), 'Gurunanda must be explicitly mapped in the Dock 45 customer list');

@@ -9,7 +9,7 @@
     "test": "npm run regression-guard"
   },
   "dependencies": {
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^9.0.3",
     "pg": "^8.13.1"
   }
 }

@@ -1406,7 +1406,7 @@ function wmsInboundLookup(keyword, authHeader) {
             const candidates = [row.id, row.receiptId, row.receiptNo, row.rn, row.poNo, row.bolNo, row.referenceNo, row.containerNo]
               .map((v) => String(v || "").trim().toUpperCase());
             return candidates.includes(normalizedKeyword);
-          }) || rows[0];
+          });
           if (match && (match.customerName || match.customerId)) {
             resolve({
               type: "inbound",
