@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet10";
+const APP_BUILD_VERSION = "strictet11";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -358,10 +358,10 @@ function setYardInstructionMode(enabled) {
 }
 
 function setCompleteHeader(mode = "complete") {
-  if (mode === "assistance") {
-    if (completeEyebrow) completeEyebrow.textContent = "Assistance Required";
-    if (completeHeading) completeHeading.textContent = "Please see the employee";
-    if (completeSuccessMark) completeSuccessMark.textContent = "!";
+  if (mode === "instruction") {
+    if (completeEyebrow) completeEyebrow.textContent = "Proceed to Door";
+    if (completeHeading) completeHeading.textContent = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
+    if (completeSuccessMark) completeSuccessMark.textContent = "✓";
   } else {
     if (completeEyebrow) completeEyebrow.textContent = "Complete Check-in";
     if (completeHeading) completeHeading.textContent = "Check in complete";
@@ -394,7 +394,7 @@ function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLB
   rnNumberEl.textContent = "";
   completionDetails.textContent = details;
   showScreen(6);
-  setCompleteHeader("assistance");
+  setCompleteHeader("instruction");
 }
 
 function showScreen(index) {

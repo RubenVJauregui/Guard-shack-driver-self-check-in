@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet10'), 'index.html must load cache-busted app.js?v=strictet10');
-assert(index.includes('styles.css?v=strictet10'), 'index.html must load cache-busted styles.css?v=strictet10');
+assert(index.includes('app.js?v=strictet11'), 'index.html must load cache-busted app.js?v=strictet11');
+assert(index.includes('styles.css?v=strictet11'), 'index.html must load cache-busted styles.css?v=strictet11');
 
 
 
@@ -74,6 +74,26 @@ assert(index.includes('PO / RN / Load #<input name="loadNo"'), 'Step 3 must show
 
 // Door routing and assistance lock.
 
+const bannedDriverPhrases = [
+  "Assistance Required",
+  "Please see the employee",
+  "Please see the employee for door assignment",
+  "Please see the employee for assistance"
+];
+
+for (const phrase of bannedDriverPhrases) {
+  assert(!app.includes(phrase), `banned driver-facing phrase must not exist in app.js: ${phrase}`);
+  assert(!index.includes(phrase), `banned driver-facing phrase must not exist in index.html: ${phrase}`);
+  assert(!identity.includes(phrase), `banned driver-facing phrase must not exist in identity.html: ${phrase}`);
+  assert(!readme.includes(phrase), `banned driver-facing phrase must not exist in README.md: ${phrase}`);
+}
+
+assert(!compactApp.includes('setCompleteHeader("assistance")'), 'fallback flow must not use assistance header mode');
+assert(app.includes('setCompleteHeader("instruction")'), 'fallback flow must use instruction header mode');
+assert(app.includes('function setCompleteHeader(mode = "complete")'), 'setCompleteHeader must remain explicit');
+assert(app.includes('completeHeading) completeHeading.textContent = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166'), 'fallback header must show locked docks 165/166 instruction');
+
+
 const ONLY_ALLOWED_DRIVER_MESSAGES = [
   "Go to the door between docks 165 & 166.",
   "Go to the door at dock 144",
@@ -90,10 +110,8 @@ assert(app.includes('const DRIVER_INSTRUCTIONS = Object.freeze({'), 'driver-faci
 assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166."'), 'normal Excel default door must exactly match the hardcoded docks 165/166 message');
 assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'default door must come from locked instructions');
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
-assert(!app.includes('Please see the employee for ' + 'door assignment'), 'banned employee door-assignment wording must not exist');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
-assert(!app.includes('Please see the employee for ' + 'assistance.'), 'old assistance detail must not return');
-assert(app.includes('const APP_BUILD_VERSION = "strictet10";'), 'app build version must be strictet10');
+assert(app.includes('const APP_BUILD_VERSION = "strictet11";'), 'app build version must be strictet11');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
