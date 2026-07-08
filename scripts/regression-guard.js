@@ -87,7 +87,8 @@ assert(compactApp.includes('if (etRes.ok && etData.ok === true && etData.etNumbe
 assert(db.includes("facility_id TEXT DEFAULT 'LT_F1'") && db.includes("facility_name TEXT DEFAULT 'Valley View'"), 'DB defaults must be LT_F1 / Valley View');
 assert(db.includes("facility_id = ?')") || db.includes("facility_id = ?"), 'dashboard query must filter by facility');
 assert(!db.includes("door_assignment ILIKE '%165%'") && !db.includes("door_assignment ILIKE '%166%'"), 'DB migration must not quarantine docks 165/166');
-assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 94'") && db.includes("'dock 2'"), 'Valley View door patterns including Dock 94 must remain classified to LT_F1');
+assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 94'"), 'Valley View door patterns including Dock 94 must remain classified to LT_F1');
+assert(!db.includes("'dock 2'"), 'Dock 2 must not be included in Valley View door classification patterns');
 
 // Drop Off Empty success behavior remains allowed only after ET success.
 assert(app.includes('doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";'), 'Drop Off Empty successful completion instruction must remain');
