@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet3'), 'index.html must load cache-busted app.js?v=strictet3');
-assert(index.includes('styles.css?v=strictet3'), 'index.html must load cache-busted styles.css?v=strictet3');
+assert(index.includes('app.js?v=strictet4'), 'index.html must load cache-busted app.js?v=strictet4');
+assert(index.includes('styles.css?v=strictet4'), 'index.html must load cache-busted styles.css?v=strictet4');
 
 
 // Driver form field lock.
