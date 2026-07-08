@@ -61,7 +61,7 @@ const door70Customers = [
 
 // LOCKED DRIVER-FACING INSTRUCTIONS — do not source these messages from WMS/YMS responses.
 const DRIVER_INSTRUCTIONS = Object.freeze({
-  DEFAULT_165_166: "Go to the door between docks 165 & 166",
+  DEFAULT_165_166: "Go to the door between docks 165 & 166.",
   FALLBACK_DETAIL_165_166: "Go to the door between docks 165 & 166.",
   DOCK_144: "Go to the door at dock 144",
   DOCK_45: "Go to the door at Dock 45",
@@ -70,7 +70,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   PICKUP_EMPTY: "Please proceed to pick up your empty"
 });
 
-const APP_BUILD_VERSION = "strictet6";
+const APP_BUILD_VERSION = "strictet7";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 

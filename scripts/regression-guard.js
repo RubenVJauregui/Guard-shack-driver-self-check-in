@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet6'), 'index.html must load cache-busted app.js?v=strictet6');
-assert(index.includes('styles.css?v=strictet6'), 'index.html must load cache-busted styles.css?v=strictet6');
+assert(index.includes('app.js?v=strictet7'), 'index.html must load cache-busted app.js?v=strictet7');
+assert(index.includes('styles.css?v=strictet7'), 'index.html must load cache-busted styles.css?v=strictet7');
 
 
 // Driver form field lock.
@@ -47,14 +47,27 @@ assert(!index.includes('name="referenceNo"'), 'Reference # field must not exist 
 assert(index.includes('PO / RN / Load #<input name="loadNo"'), 'Step 3 must show only the PO / RN / Load # box for load reference entry');
 
 // Door routing and assistance lock.
+
+const ONLY_ALLOWED_DRIVER_MESSAGES = [
+  "Go to the door between docks 165 & 166.",
+  "Go to the door at dock 144",
+  "Go to the door at Dock 45",
+  "Go to Dock 94",
+  "Drop off container / trailer at any open spot in the yard",
+  "Please proceed to pick up your empty"
+];
+for (const message of ONLY_ALLOWED_DRIVER_MESSAGES) {
+  assert(app.includes(message), `required hardcoded driver message missing: ${message}`);
+}
+assert(!app.includes('Go to the door between docks 165 & 166",'), 'non-period 165/166 instruction must not remain');
 assert(app.includes('const DRIVER_INSTRUCTIONS = Object.freeze({'), 'driver-facing instructions must be locked in one constant object');
-assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166"'), 'normal Excel default door must remain docks 165/166');
+assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166."'), 'normal Excel default door must exactly match the hardcoded docks 165/166 message');
 assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'default door must come from locked instructions');
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(!app.includes('Please see the employee for ' + 'door assignment'), 'banned employee door-assignment wording must not exist');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
 assert(!app.includes('Please see the employee for ' + 'assistance.'), 'old assistance detail must not return');
-assert(app.includes('const APP_BUILD_VERSION = "strictet6";'), 'app build version must be strictet6');
+assert(app.includes('const APP_BUILD_VERSION = "strictet7";'), 'app build version must be strictet7');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
