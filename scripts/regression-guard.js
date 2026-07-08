@@ -37,15 +37,28 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet8'), 'index.html must load cache-busted app.js?v=strictet8');
-assert(index.includes('styles.css?v=strictet8'), 'index.html must load cache-busted styles.css?v=strictet8');
+assert(index.includes('app.js?v=strictet9'), 'index.html must load cache-busted app.js?v=strictet9');
+assert(index.includes('styles.css?v=strictet9'), 'index.html must load cache-busted styles.css?v=strictet9');
 
 
 
-// Entry task selection lock.
+// Entry task and load-details screen lock.
 assert(index.includes('<select name="entryTask" id="entryTaskSelect" required>'), 'entry task dropdown must be required');
 assert(index.includes('<option value="" selected disabled hidden></option>'), 'entry task dropdown must start blank');
 assert(index.indexOf('<option value="" selected disabled hidden></option>') < index.indexOf('<option>Live Offload</option>'), 'blank entry task option must come before Live Offload');
+const step3Start = index.indexOf('data-screen="3"');
+const step4Start = index.indexOf('data-screen="4"');
+const step5Start = index.indexOf('data-screen="5"');
+const step3Html = index.slice(step3Start, step4Start);
+const step4Html = index.slice(step4Start, step5Start);
+assert(step3Html.includes('Choose your entry task'), 'Step 3 must show Choose your entry task');
+assert(!step3Html.includes('PO / RN / Load #') && !step3Html.includes('Comments') && !step3Html.includes('BOL / Load / Seal Picture'), 'Step 3 must show only the entry task selection, not load detail fields');
+assert(step4Html.includes('PO / RN / Load #') && step4Html.includes('Comments') && step4Html.includes('BOL / Load / Seal Picture'), 'Step 4 must contain the load detail fields for non-immediate tasks');
+assert(index.includes('class="screen complete-screen" data-screen="6"'), 'Complete screen must be data-screen 6 after adding Load Details screen');
+assert(app.includes('function isImmediateInstructionTask()'), 'app must detect immediate instruction tasks');
+assert(app.includes('showImmediateTaskInstructionScreen(getImmediateTaskInstruction())'), 'immediate instruction tasks must show their message on the next screen');
+assert(app.includes('if (currentScreen === 4)'), 'load detail validation must happen on Step 4');
+assert(app.includes('if (currentScreen === 5)'), 'final submit must happen on review Step 5');
 
 // Driver form field lock.
 assert(!index.includes('Reference #<input name="referenceNo"'), 'Step 3 must not show a Reference # input box');
@@ -73,7 +86,7 @@ assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FAL
 assert(!app.includes('Please see the employee for ' + 'door assignment'), 'banned employee door-assignment wording must not exist');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
 assert(!app.includes('Please see the employee for ' + 'assistance.'), 'old assistance detail must not return');
-assert(app.includes('const APP_BUILD_VERSION = "strictet8";'), 'app build version must be strictet8');
+assert(app.includes('const APP_BUILD_VERSION = "strictet9";'), 'app build version must be strictet9');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');

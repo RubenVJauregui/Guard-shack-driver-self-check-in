@@ -70,7 +70,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   PICKUP_EMPTY: "Please proceed to pick up your empty"
 });
 
-const APP_BUILD_VERSION = "strictet8";
+const APP_BUILD_VERSION = "strictet9";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -81,6 +81,7 @@ const screenTitles = [
   "Driver Information",
   "Vehicle Information",
   "Choose Entry Task",
+  "Load Details",
   "Verify Information",
   "Check in complete"
 ];
@@ -162,12 +163,14 @@ function isPickupEmpty() {
   return task === "pickup empty";
 }
 
-document.querySelector("#entryTaskSelect").addEventListener("change", () => {
-  const loadFields = document.querySelector("#loadFieldsRow");
-  if (loadFields) {
-    loadFields.style.display = isDropOffEmpty() ? "none" : "grid";
-  }
-});
+function isImmediateInstructionTask() {
+  return isDropOffFull() || isDropOffEmpty() || isPickupEmpty();
+}
+
+function getImmediateTaskInstruction() {
+  if (isPickupEmpty()) return DRIVER_INSTRUCTIONS.PICKUP_EMPTY;
+  return DRIVER_INSTRUCTIONS.DROP_EMPTY;
+}
 
 // After 3 failed PO/RN/Load lookups, show this message
 const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;
@@ -176,7 +179,7 @@ let lastValidatedRn = "";
 let lastValidatedRnResult = null;
 
 nextBtn.addEventListener("click", async () => {
-  if (currentScreen === 4) {
+  if (currentScreen === 5) {
     if (!validateScreen()) return;
     nextBtn.disabled = true;
     nextBtn.textContent = "Submitting...";
@@ -189,7 +192,7 @@ nextBtn.addEventListener("click", async () => {
     }
     nextBtn.disabled = false;
     if (success) {
-      showScreen(5);
+      showScreen(6);
     } else {
       nextBtn.textContent = "Complete";
       showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166);
@@ -197,16 +200,20 @@ nextBtn.addEventListener("click", async () => {
     return;
   }
 
-  // Step 3: validate PO/RN/Load # against WMS before proceeding
+  // Step 3: only choose the entry task. Immediate yard tasks show their hardcoded message next.
   if (currentScreen === 3) {
     if (!validateScreen()) return;
-
-    // Drop Off Empty: skip PO/RN/Load validation entirely
-    if (isDropOffEmpty()) {
-      buildReview();
-      showScreen(currentScreen + 1);
+    if (isImmediateInstructionTask()) {
+      showImmediateTaskInstructionScreen(getImmediateTaskInstruction());
       return;
     }
+    showScreen(4);
+    return;
+  }
+
+  // Step 4: for all other tasks, collect and validate PO/RN/Load details against WMS.
+  if (currentScreen === 4) {
+    if (!validateScreen()) return;
 
     const data = getFormData();
     const identifiers = getLoadIdentifiers(data);
@@ -219,7 +226,7 @@ nextBtn.addEventListener("click", async () => {
     const validationKey = identifiers.join("|");
     if (validationKey === lastValidatedRn && lastValidatedRnResult && lastValidatedRnResult.customer) {
       buildReview();
-      showScreen(currentScreen + 1);
+      showScreen(5);
       return;
     }
 
@@ -237,7 +244,7 @@ nextBtn.addEventListener("click", async () => {
       lastValidatedRnResult = wmsResult;
       rnLookupAttempts = 0;
       buildReview();
-      showScreen(currentScreen + 1);
+      showScreen(5);
     } else {
       rnLookupAttempts++;
       const tried = identifiers.join(", ");
@@ -255,7 +262,7 @@ nextBtn.addEventListener("click", async () => {
 });
 
 backBtn.addEventListener("click", () => {
-  if (currentScreen > 0 && currentScreen < 5) showScreen(currentScreen - 1);
+  if (currentScreen > 0 && currentScreen < 6) showScreen(currentScreen - 1);
 });
 
 saveDraftBtn.addEventListener("click", () => {
@@ -321,7 +328,7 @@ if (preCheckinSearchBtn) {
         const qrHelp = document.querySelector(".qr-help");
         if (qrHelp) qrHelp.style.display = "none";
         completionDetails.textContent = "Pre-checked in ticket found. Please proceed to your assigned door.";
-        showScreen(5);
+        showScreen(6);
       } else {
         preCheckinError.textContent = data.error || "Ticket not found. Please check the number and try again.";
         preCheckinError.hidden = false;
@@ -353,6 +360,20 @@ function setCompleteHeader(mode = "complete") {
   }
 }
 
+function showImmediateTaskInstructionScreen(message) {
+  setYardInstructionMode(true);
+  doorInstruction.textContent = message;
+  identityQr.style.display = "none";
+  identityQrLink.style.display = "none";
+  const qrHelp = document.querySelector(".qr-help");
+  if (qrHelp) qrHelp.style.display = "none";
+  etNumberEl.textContent = "";
+  rnNumberEl.textContent = "";
+  completionDetails.textContent = "";
+  showScreen(6);
+  setCompleteHeader("complete");
+}
+
 function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166) {
   setYardInstructionMode(true);
   doorInstruction.textContent = message;
@@ -363,21 +384,21 @@ function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLB
   etNumberEl.textContent = "";
   rnNumberEl.textContent = "";
   completionDetails.textContent = details;
-  showScreen(5);
+  showScreen(6);
   setCompleteHeader("assistance");
 }
 
 function showScreen(index) {
   clearActionError();
-  if (index !== 5) setYardInstructionMode(false);
-  if (index === 5) setCompleteHeader("complete");
+  if (index !== 6) setYardInstructionMode(false);
+  if (index === 6) setCompleteHeader("complete");
   currentScreen = index;
   screens.forEach((screen, screenIndex) => screen.classList.toggle("active", screenIndex === index));
   dots.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex <= Math.min(index, 4)));
   title.textContent = screenTitles[index];
-  backBtn.style.visibility = index > 0 && index < 5 ? "visible" : "hidden";
-  document.querySelector(".actions").style.display = index === 5 ? "none" : "grid";
-  nextBtn.textContent = index === 4 ? "Complete" : "Continue";
+  backBtn.style.visibility = index > 0 && index < 6 ? "visible" : "hidden";
+  document.querySelector(".actions").style.display = index === 6 ? "none" : "grid";
+  nextBtn.textContent = index === 5 ? "Complete" : "Continue";
   nextBtn.disabled = false;
 }
 

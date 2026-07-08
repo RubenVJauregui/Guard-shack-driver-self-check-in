@@ -7,7 +7,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Driver Check-In — Valley View</title>
-    <link rel="stylesheet" href="./styles.css?v=strictet8" />
+    <link rel="stylesheet" href="./styles.css?v=strictet9" />
   </head>
   <body>
     <main id="app" class="shell">
@@ -165,6 +165,13 @@
                 <option>Pickup Empty</option>
               </select>
             </label>
+          </section>
+
+          <section class="screen" data-screen="4">
+            <div class="section-title">
+              <p>Step 4</p>
+              <h2>Load Details</h2>
+            </div>
             <div id="loadFieldsRow">
               <label>PO / RN / Load #<input name="loadNo" /></label>
             </div>
@@ -176,9 +183,9 @@
             <div class="preview-grid" id="loadPreview"></div>
           </section>
 
-          <section class="screen" data-screen="4">
+          <section class="screen" data-screen="5">
             <div class="section-title">
-              <p>Step 4</p>
+              <p>Step 5</p>
               <h2>Please verify your information</h2>
             </div>
             <div id="review" class="review"></div>
@@ -189,7 +196,7 @@
             <p class="field-error" id="privacyError" hidden>Please check the box to confirm your information before completing.</p>
           </section>
 
-          <section class="screen complete-screen" data-screen="5">
+          <section class="screen complete-screen" data-screen="6">
             <div class="success-mark">✓</div>
             <p class="eyebrow">Complete Check-in</p>
             <h2>Check in complete</h2>
@@ -216,6 +223,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=strictet8"></script>
+    <script src="./app.js?v=strictet9"></script>
   </body>
 </html>
