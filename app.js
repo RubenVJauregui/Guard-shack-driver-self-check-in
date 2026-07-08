@@ -59,8 +59,21 @@ const door70Customers = [
   "Euromarket / Crate & Barrel"
 ];
 
-const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";
-const ASSISTANCE_DOOR_INSTRUCTION = "Please see the employee for door assignment";
+// LOCKED DRIVER-FACING INSTRUCTIONS — do not source these messages from WMS/YMS responses.
+const DRIVER_INSTRUCTIONS = Object.freeze({
+  DEFAULT_165_166: "Go to the door between docks 165 & 166",
+  FALLBACK_DETAIL_165_166: "Go to the door between docks 165 & 166.",
+  ASSISTANCE_REQUIRED: "Please see the employee for door assignment",
+  DOCK_144: "Go to the door at dock 144",
+  DOCK_45: "Go to the door at Dock 45",
+  DOCK_94: "Go to Dock 94",
+  DROP_EMPTY: "Drop off container / trailer at any open spot in the yard",
+  PICKUP_EMPTY: "Please proceed to pick up your empty"
+});
+
+const APP_BUILD_VERSION = "strictet5";
+const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
+const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.ASSISTANCE_REQUIRED;
 
 const rnToCustomerMap = {};
 
@@ -180,7 +193,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Go to the door between docks 165 & 166.");
+      showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166);
     }
     return;
   }
@@ -230,7 +243,7 @@ nextBtn.addEventListener("click", async () => {
       rnLookupAttempts++;
       const tried = identifiers.join(", ");
       if (rnLookupAttempts >= 3) {
-        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Go to the door between docks 165 & 166.");
+        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166);
       } else {
         showActionError(`PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
@@ -341,7 +354,7 @@ function setCompleteHeader(mode = "complete") {
   }
 }
 
-function showLargeInstructionScreen(message, details = "Go to the door between docks 165 & 166.") {
+function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166) {
   setYardInstructionMode(true);
   doorInstruction.textContent = message;
   identityQr.style.display = "none";
@@ -641,7 +654,7 @@ async function completeCheckin() {
   // Drop Off Empty: show ET, drop-off message, hide QR
   if (isDropOffEmpty()) {
     setYardInstructionMode(true);
-    doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";
+    doorInstruction.textContent = DRIVER_INSTRUCTIONS.DROP_EMPTY;
     identityQr.style.display = "none";
     identityQrLink.style.display = "none";
     const qrHelp = document.querySelector(".qr-help");
@@ -651,7 +664,7 @@ async function completeCheckin() {
     completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
   } else if (isDropOffFull()) {
     setYardInstructionMode(true);
-    doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";
+    doorInstruction.textContent = DRIVER_INSTRUCTIONS.DROP_EMPTY;
     identityQr.style.display = "";
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
@@ -663,7 +676,7 @@ async function completeCheckin() {
     completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
   } else if (isPickupEmpty()) {
     setYardInstructionMode(true);
-    doorInstruction.textContent = "Please proceed to pick up your empty";
+    doorInstruction.textContent = DRIVER_INSTRUCTIONS.PICKUP_EMPTY;
     identityQr.style.display = "";
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
@@ -829,16 +842,16 @@ function getDoorAssignment(customerValue) {
   if (!normalized) return EXCEL_DEFAULT_DOOR;
 
   if (doorBetween165_166Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door between docks 165 & 166";
+    return DRIVER_INSTRUCTIONS.DEFAULT_165_166;
   }
   if (door144Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door at dock 144";
+    return DRIVER_INSTRUCTIONS.DOCK_144;
   }
   if (door45Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to the door at Dock 45";
+    return DRIVER_INSTRUCTIONS.DOCK_45;
   }
   if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to Dock 94";
+    return DRIVER_INSTRUCTIONS.DOCK_94;
   }
   return EXCEL_DEFAULT_DOOR;
 }

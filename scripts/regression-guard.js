@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet4'), 'index.html must load cache-busted app.js?v=strictet4');
-assert(index.includes('styles.css?v=strictet4'), 'index.html must load cache-busted styles.css?v=strictet4');
+assert(index.includes('app.js?v=strictet5'), 'index.html must load cache-busted app.js?v=strictet5');
+assert(index.includes('styles.css?v=strictet5'), 'index.html must load cache-busted styles.css?v=strictet5');
 
 
 // Driver form field lock.
@@ -47,19 +47,27 @@ assert(!index.includes('name="referenceNo"'), 'Reference # field must not exist 
 assert(index.includes('PO / RN / Load #<input name="loadNo"'), 'Step 3 must show only the PO / RN / Load # box for load reference entry');
 
 // Door routing and assistance lock.
-assert(app.includes('const EXCEL_DEFAULT_DOOR = "Go to the door between docks 165 & 166";'), 'normal Excel default door must remain docks 165/166');
-assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = "Please see the employee for door assignment";'), 'assistance instruction constant must exist');
+assert(app.includes('const DRIVER_INSTRUCTIONS = Object.freeze({'), 'driver-facing instructions must be locked in one constant object');
+assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166"'), 'normal Excel default door must remain docks 165/166');
+assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'default door must come from locked instructions');
+assert(app.includes('ASSISTANCE_REQUIRED: "Please see the employee for door assignment"'), 'assistance instruction must be locked');
+assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.ASSISTANCE_REQUIRED;'), 'assistance instruction constant must come from locked instructions');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
-assert(app.includes('return "Go to the door at dock 144";'), 'Excel dock 144 mapping must remain');
-assert(app.includes('return "Go to the door at Dock 45";'), 'Excel Dock 45 mapping must remain');
+assert(!app.includes('Please see the employee for assistance.'), 'old assistance detail must not return');
+assert(app.includes('const APP_BUILD_VERSION = "strictet5";'), 'app build version must be strictet5');
+assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
+assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
-assert(app.includes('return "Go to Dock 94";'), 'Crate & Barrel mapping must route to Dock 94');
+assert(app.includes('DOCK_94: "Go to Dock 94"'), 'Crate & Barrel mapping must route to Dock 94');
+assert(app.includes('return DRIVER_INSTRUCTIONS.DOCK_94;'), 'Crate & Barrel return must use locked Dock 94 instruction');
 assert(!app.includes('return "Go to Dock 70";'), 'Crate & Barrel must no longer route to Dock 70');
+assert(!app.includes('DOCK_70'), 'Dock 70 must not be a driver-facing locked instruction');
 assert(compactApp.includes('if (!etNumber) { return false; } const doorResult = await getDoorAssignmentWithStaging'), 'client must compute door assignment only after confirmed ET');
 assert(!compactApp.includes('showLargeInstructionScreen(EXCEL_DEFAULT_DOOR'), 'failure screens must not use Excel default door');
 assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "")'), 'failure screens must include detail, not blank detail');
-assert(app.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Go to the door between docks 165 & 166.")'), 'ET failure fallback detail must instruct docks 165/166');
-assert(app.includes('function showLargeInstructionScreen(message, details = "Go to the door between docks 165 & 166.")'), 'default assistance detail must instruct docks 165/166');
+assert(app.includes('FALLBACK_DETAIL_165_166: "Go to the door between docks 165 & 166."'), 'ET failure fallback detail must instruct docks 165/166');
+assert(app.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166)'), 'ET failure fallback must use locked fallback detail');
+assert(app.includes('function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166)'), 'default assistance detail must use locked docks 165/166 detail');
 
 // Driver license photo validation lock.
 assert(app.includes('driverPhotoValidated = false') && app.includes('driverPhotoValidated = accepted'), 'driverPhotoValidated state must be maintained');
@@ -91,7 +99,8 @@ assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'do
 assert(!db.includes("'dock 2'"), 'Dock 2 must not be included in Valley View door classification patterns');
 
 // Drop Off Empty success behavior remains allowed only after ET success.
-assert(app.includes('doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";'), 'Drop Off Empty successful completion instruction must remain');
+assert(app.includes('DROP_EMPTY: "Drop off container / trailer at any open spot in the yard"'), 'Drop Off Empty successful completion instruction must remain');
+assert(app.includes('PICKUP_EMPTY: "Please proceed to pick up your empty"'), 'Pickup Empty successful completion instruction must remain');
 
 // Server resilience lock.
 assert(server.includes('process.on("uncaughtException"') && server.includes('process.on("unhandledRejection"'), 'server must guard uncaught ECONNRESET/aborted errors');
