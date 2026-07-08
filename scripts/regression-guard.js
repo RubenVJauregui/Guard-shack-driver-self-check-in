@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet2'), 'index.html must load cache-busted app.js?v=strictet2');
-assert(index.includes('styles.css?v=strictet2'), 'index.html must load cache-busted styles.css?v=strictet2');
+assert(index.includes('app.js?v=strictet3'), 'index.html must load cache-busted app.js?v=strictet3');
+assert(index.includes('styles.css?v=strictet3'), 'index.html must load cache-busted styles.css?v=strictet3');
 
 
 // Driver form field lock.
@@ -52,7 +52,9 @@ assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = "Please see the employe
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
 assert(app.includes('return "Go to the door at dock 144";'), 'Excel dock 144 mapping must remain');
 assert(app.includes('return "Go to the door at Dock 45";'), 'Excel Dock 45 mapping must remain');
+assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
 assert(app.includes('return "Go to Dock 94";'), 'Crate & Barrel mapping must route to Dock 94');
+assert(!app.includes('return "Go to Dock 70";'), 'Crate & Barrel must no longer route to Dock 70');
 assert(compactApp.includes('if (!etNumber) { return false; } const doorResult = await getDoorAssignmentWithStaging'), 'client must compute door assignment only after confirmed ET');
 assert(!compactApp.includes('showLargeInstructionScreen(EXCEL_DEFAULT_DOOR'), 'failure screens must not use Excel default door');
 assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "")'), 'failure screens must include assistance detail, not blank detail');
