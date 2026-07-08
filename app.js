@@ -54,7 +54,7 @@ const door45Customers = [
   "the only bean"
 ];
 
-// Column H: "Go to Dock 70"
+// Column H: "Go to Dock 94"
 const door70Customers = [
   "Euromarket / Crate & Barrel"
 ];
@@ -838,7 +838,7 @@ function getDoorAssignment(customerValue) {
     return "Go to the door at Dock 45";
   }
   if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
-    return "Go to Dock 70";
+    return "Go to Dock 94";
   }
   return EXCEL_DEFAULT_DOOR;
 }

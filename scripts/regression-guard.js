@@ -52,7 +52,7 @@ assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = "Please see the employe
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
 assert(app.includes('return "Go to the door at dock 144";'), 'Excel dock 144 mapping must remain');
 assert(app.includes('return "Go to the door at Dock 45";'), 'Excel Dock 45 mapping must remain');
-assert(app.includes('return "Go to Dock 70";'), 'Excel Dock 70 mapping must remain');
+assert(app.includes('return "Go to Dock 94";'), 'Crate & Barrel mapping must route to Dock 94');
 assert(compactApp.includes('if (!etNumber) { return false; } const doorResult = await getDoorAssignmentWithStaging'), 'client must compute door assignment only after confirmed ET');
 assert(!compactApp.includes('showLargeInstructionScreen(EXCEL_DEFAULT_DOOR'), 'failure screens must not use Excel default door');
 assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "")'), 'failure screens must include assistance detail, not blank detail');
@@ -84,7 +84,7 @@ assert(compactApp.includes('if (etRes.ok && etData.ok === true && etData.etNumbe
 assert(db.includes("facility_id TEXT DEFAULT 'LT_F1'") && db.includes("facility_name TEXT DEFAULT 'Valley View'"), 'DB defaults must be LT_F1 / Valley View');
 assert(db.includes("facility_id = ?')") || db.includes("facility_id = ?"), 'dashboard query must filter by facility');
 assert(!db.includes("door_assignment ILIKE '%165%'") && !db.includes("door_assignment ILIKE '%166%'"), 'DB migration must not quarantine docks 165/166');
-assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 2'"), 'Valley View door patterns must remain classified to LT_F1');
+assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 94'") && db.includes("'dock 2'"), 'Valley View door patterns including Dock 94 must remain classified to LT_F1');
 
 // Drop Off Empty success behavior remains allowed only after ET success.
 assert(app.includes('doorInstruction.textContent = "Drop off container / trailer at any open spot in the yard";'), 'Drop Off Empty successful completion instruction must remain');
