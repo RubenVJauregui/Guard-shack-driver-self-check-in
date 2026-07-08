@@ -57,8 +57,9 @@ assert(app.includes('return "Go to Dock 94";'), 'Crate & Barrel mapping must rou
 assert(!app.includes('return "Go to Dock 70";'), 'Crate & Barrel must no longer route to Dock 70');
 assert(compactApp.includes('if (!etNumber) { return false; } const doorResult = await getDoorAssignmentWithStaging'), 'client must compute door assignment only after confirmed ET');
 assert(!compactApp.includes('showLargeInstructionScreen(EXCEL_DEFAULT_DOOR'), 'failure screens must not use Excel default door');
-assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "")'), 'failure screens must include assistance detail, not blank detail');
-assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Load was found in WMS'), 'ET fallback must not display dock-related WMS-found fallback');
+assert(!compactApp.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "")'), 'failure screens must include detail, not blank detail');
+assert(app.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Go to the door between docks 165 & 166.")'), 'ET failure fallback detail must instruct docks 165/166');
+assert(app.includes('function showLargeInstructionScreen(message, details = "Go to the door between docks 165 & 166.")'), 'default assistance detail must instruct docks 165/166');
 
 // Driver license photo validation lock.
 assert(app.includes('driverPhotoValidated = false') && app.includes('driverPhotoValidated = accepted'), 'driverPhotoValidated state must be maintained');

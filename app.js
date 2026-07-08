@@ -180,7 +180,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       nextBtn.textContent = "Complete";
-      showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "ET could not be created. Please see the employee for assistance.");
+      showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Go to the door between docks 165 & 166.");
     }
     return;
   }
@@ -230,7 +230,7 @@ nextBtn.addEventListener("click", async () => {
       rnLookupAttempts++;
       const tried = identifiers.join(", ");
       if (rnLookupAttempts >= 3) {
-        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Please see the employee for assistance.");
+        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, "Go to the door between docks 165 & 166.");
       } else {
         showActionError(`PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
@@ -341,7 +341,7 @@ function setCompleteHeader(mode = "complete") {
   }
 }
 
-function showLargeInstructionScreen(message, details = "Please see the employee for assistance.") {
+function showLargeInstructionScreen(message, details = "Go to the door between docks 165 & 166.") {
   setYardInstructionMode(true);
   doorInstruction.textContent = message;
   identityQr.style.display = "none";
