@@ -63,7 +63,6 @@ const door70Customers = [
 const DRIVER_INSTRUCTIONS = Object.freeze({
   DEFAULT_165_166: "Go to the door between docks 165 & 166",
   FALLBACK_DETAIL_165_166: "Go to the door between docks 165 & 166.",
-  ASSISTANCE_REQUIRED: "Please see the employee for door assignment",
   DOCK_144: "Go to the door at dock 144",
   DOCK_45: "Go to the door at Dock 45",
   DOCK_94: "Go to Dock 94",
@@ -71,9 +70,9 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   PICKUP_EMPTY: "Please proceed to pick up your empty"
 });
 
-const APP_BUILD_VERSION = "strictet5";
+const APP_BUILD_VERSION = "strictet6";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
-const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.ASSISTANCE_REQUIRED;
+const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
 const rnToCustomerMap = {};
 
