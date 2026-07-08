@@ -37,9 +37,15 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet7'), 'index.html must load cache-busted app.js?v=strictet7');
-assert(index.includes('styles.css?v=strictet7'), 'index.html must load cache-busted styles.css?v=strictet7');
+assert(index.includes('app.js?v=strictet8'), 'index.html must load cache-busted app.js?v=strictet8');
+assert(index.includes('styles.css?v=strictet8'), 'index.html must load cache-busted styles.css?v=strictet8');
 
+
+
+// Entry task selection lock.
+assert(index.includes('<select name="entryTask" id="entryTaskSelect" required>'), 'entry task dropdown must be required');
+assert(index.includes('<option value="" selected disabled hidden></option>'), 'entry task dropdown must start blank');
+assert(index.indexOf('<option value="" selected disabled hidden></option>') < index.indexOf('<option>Live Offload</option>'), 'blank entry task option must come before Live Offload');
 
 // Driver form field lock.
 assert(!index.includes('Reference #<input name="referenceNo"'), 'Step 3 must not show a Reference # input box');
@@ -67,7 +73,7 @@ assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FAL
 assert(!app.includes('Please see the employee for ' + 'door assignment'), 'banned employee door-assignment wording must not exist');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
 assert(!app.includes('Please see the employee for ' + 'assistance.'), 'old assistance detail must not return');
-assert(app.includes('const APP_BUILD_VERSION = "strictet7";'), 'app build version must be strictet7');
+assert(app.includes('const APP_BUILD_VERSION = "strictet8";'), 'app build version must be strictet8');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');

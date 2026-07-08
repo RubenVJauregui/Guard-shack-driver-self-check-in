@@ -7,7 +7,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Driver Check-In — Valley View</title>
-    <link rel="stylesheet" href="./styles.css?v=strictet7" />
+    <link rel="stylesheet" href="./styles.css?v=strictet8" />
   </head>
   <body>
     <main id="app" class="shell">
@@ -155,7 +155,8 @@
             </div>
             <label>
               Choose your entry task
-              <select name="entryTask" id="entryTaskSelect">
+              <select name="entryTask" id="entryTaskSelect" required>
+                <option value="" selected disabled hidden></option>
                 <option>Live Offload</option>
                 <option>Drop Off Full</option>
                 <option>Drop Off Empty</option>
@@ -215,6 +216,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=strictet7"></script>
+    <script src="./app.js?v=strictet8"></script>
   </body>
 </html>
