@@ -67,10 +67,11 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   DOCK_45: "Go to the door at Dock 45",
   DOCK_94: "Go to Dock 94",
   DROP_EMPTY: "Drop off container / trailer at any open spot in the yard",
-  PICKUP_EMPTY: "Please proceed to pick up your empty"
+  PICKUP_EMPTY: "Please proceed to pick up your empty",
+  UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet9";
+const APP_BUILD_VERSION = "strictet10";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -277,6 +278,14 @@ startOverBtn.addEventListener("click", () => {
   document.querySelectorAll(".preview-grid").forEach((grid) => (grid.innerHTML = ""));
   showScreen(0);
 });
+
+
+const unisDriversBtn = document.querySelector("#unisDriversBtn");
+if (unisDriversBtn) {
+  unisDriversBtn.addEventListener("click", () => {
+    showImmediateTaskInstructionScreen(DRIVER_INSTRUCTIONS.UNIS_DRIVER_DOCK_93);
+  });
+}
 
 // --- Already Pre-Checked In flow ---
 const preCheckedInBtn = document.querySelector("#preCheckedInBtn");

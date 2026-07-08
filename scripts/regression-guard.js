@@ -37,10 +37,17 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet9'), 'index.html must load cache-busted app.js?v=strictet9');
-assert(index.includes('styles.css?v=strictet9'), 'index.html must load cache-busted styles.css?v=strictet9');
+assert(index.includes('app.js?v=strictet10'), 'index.html must load cache-busted app.js?v=strictet10');
+assert(index.includes('styles.css?v=strictet10'), 'index.html must load cache-busted styles.css?v=strictet10');
 
 
+
+
+// UNIS driver shortcut lock.
+assert(index.includes('id="unisDriversBtn"') && index.includes('Unis Drivers press here'), 'Unis Drivers button must appear under prechecked-in button');
+assert(index.indexOf('id="preCheckedInBtn"') < index.indexOf('id="unisDriversBtn"'), 'Unis Drivers button must appear below Already Pre-Checked In button');
+assert(app.includes('UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"'), 'UNIS driver dock 93 message must be locked');
+assert(app.includes('showImmediateTaskInstructionScreen(DRIVER_INSTRUCTIONS.UNIS_DRIVER_DOCK_93)'), 'UNIS driver button must show dock 93 instruction screen');
 
 // Entry task and load-details screen lock.
 assert(index.includes('<select name="entryTask" id="entryTaskSelect" required>'), 'entry task dropdown must be required');
@@ -86,7 +93,7 @@ assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FAL
 assert(!app.includes('Please see the employee for ' + 'door assignment'), 'banned employee door-assignment wording must not exist');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
 assert(!app.includes('Please see the employee for ' + 'assistance.'), 'old assistance detail must not return');
-assert(app.includes('const APP_BUILD_VERSION = "strictet9";'), 'app build version must be strictet9');
+assert(app.includes('const APP_BUILD_VERSION = "strictet10";'), 'app build version must be strictet10');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
