@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet23'), 'index.html must load cache-busted app.js?v=strictet23');
-assert(index.includes('styles.css?v=strictet23'), 'index.html must load cache-busted styles.css?v=strictet23');
+assert(index.includes('app.js?v=strictet24'), 'index.html must load cache-busted app.js?v=strictet24');
+assert(index.includes('styles.css?v=strictet24'), 'index.html must load cache-busted styles.css?v=strictet24');
 
 
 
@@ -103,7 +103,7 @@ assert(app.includes('completeHeading) completeHeading.textContent = DRIVER_INSTR
 const ONLY_ALLOWED_DRIVER_MESSAGES = [
   "Go to the door between docks 165 & 166.",
   "Go to the door at dock 144",
-  "Go to the door at Dock 45",
+  "Go to the door at Dock 40",
   "Go to Dock 94",
   "Drop off container / trailer at any open spot in the yard",
   "Please proceed to pick up your empty"
@@ -118,9 +118,9 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet23";'), 'app build version must be strictet23');
+assert(app.includes('const APP_BUILD_VERSION = "strictet24";'), 'app build version must be strictet24');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
-assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
+assert(app.includes('DOCK_45: "Go to the door at Dock 40"'), 'Excel Dock 40 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
 assert(app.includes('DOCK_94: "Go to Dock 94"'), 'Crate & Barrel mapping must route to Dock 94');
 assert(app.includes('return DRIVER_INSTRUCTIONS.DOCK_94;'), 'Crate & Barrel return must use locked Dock 94 instruction');
@@ -172,7 +172,7 @@ assert(compactApp.includes('if (etRes.ok && etData.ok === true && etData.etNumbe
 assert(db.includes("facility_id TEXT DEFAULT 'LT_F1'") && db.includes("facility_name TEXT DEFAULT 'Valley View'"), 'DB defaults must be LT_F1 / Valley View');
 assert(db.includes("facility_id = ?')") || db.includes("facility_id = ?"), 'dashboard query must filter by facility');
 assert(!db.includes("door_assignment ILIKE '%165%'") && !db.includes("door_assignment ILIKE '%166%'"), 'DB migration must not quarantine docks 165/166');
-assert(db.includes("'dock 45'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 94'"), 'Valley View door patterns including Dock 94 must remain classified to LT_F1');
+assert(db.includes("'dock 40'") && db.includes("'dock 144'") && db.includes("'dock 70'") && db.includes("'dock 94'"), 'Valley View door patterns including Dock 94 must remain classified to LT_F1');
 assert(!db.includes("'dock 2'"), 'Dock 2 must not be included in Valley View door classification patterns');
 
 // Drop Off Empty success behavior remains allowed only after ET success.
@@ -184,7 +184,7 @@ assert(server.includes('process.on("uncaughtException"') && server.includes('pro
 assert(compactServer.includes('req.on("aborted", onAborted);'), 'readBody must handle aborted requests');
 assert(compactServer.includes('if (res.writableEnded || res.destroyed) return;'), 'sendJson must skip writes to disconnected responses');
 
-assert(app.includes('return DRIVER_INSTRUCTIONS.DOCK_45;'), 'customers not found on the Excel sheet must route to Dock 45');
+assert(app.includes('return DRIVER_INSTRUCTIONS.DOCK_45;'), 'customers not found on the Excel sheet must route to Dock 40');
 assert(app.includes('showLargeInstructionScreen(WISE_NOT_FOUND_INSTRUCTION'), 'WISE not-found path must immediately show docks 165/166');
 
 assert(server.includes('const ADMIN_CHANGE_TOKEN = process.env.ADMIN_CHANGE_TOKEN || "";'), 'ADMIN_CHANGE_TOKEN must be configured as a runtime env var');

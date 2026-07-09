@@ -36,7 +36,7 @@ const door144Customers = [
   "WISMETTAC ASIAN FOODS"
 ];
 
-// Column F: "Go to the door at Dock 45"
+// Column F: "Go to the door at Dock 40"
 const door45Customers = [
   "TCL NORTH AMERICA",
   "LENNOX INDUSTRIES INC.",
@@ -64,14 +64,14 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   DEFAULT_165_166: "Go to the door between docks 165 & 166.",
   FALLBACK_DETAIL_165_166: "Go to the door between docks 165 & 166.",
   DOCK_144: "Go to the door at dock 144",
-  DOCK_45: "Go to the door at Dock 45",
+  DOCK_45: "Go to the door at Dock 40",
   DOCK_94: "Go to Dock 94",
   DROP_EMPTY: "Drop off container / trailer at any open spot in the yard",
   PICKUP_EMPTY: "Please proceed to pick up your empty",
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet23";
+const APP_BUILD_VERSION = "strictet24";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -943,7 +943,7 @@ function getDoorAssignment(customerValue) {
   if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
     return DRIVER_INSTRUCTIONS.DOCK_94;
   }
-  // If WISE finds the customer but the customer is not on the Excel door sheet, route to Dock 45.
+  // If WISE finds the customer but the customer is not on the Excel door sheet, route to Dock 40.
   return DRIVER_INSTRUCTIONS.DOCK_45;
 }
 

@@ -7,7 +7,7 @@ function getPool() {
   return pool;
 }
 
-const VALLEY_VIEW_DOOR_PATTERNS = ['165', '166', 'dock 45', 'dock 144', 'dock 70', 'dock 94'];
+const VALLEY_VIEW_DOOR_PATTERNS = ['165', '166', 'dock 40', 'dock 144', 'dock 70', 'dock 94'];
 
 function classifyFacility(record) {
   const door = String(record.door_assignment || '').toLowerCase();
