@@ -7,7 +7,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Driver Check-In — Valley View</title>
-    <link rel="stylesheet" href="./styles.css?v=strictet13" />
+    <link rel="stylesheet" href="./styles.css?v=strictet14" />
   </head>
   <body>
     <main id="app" class="shell">
@@ -100,8 +100,8 @@
             <label>Driver License Number<input name="license" required /></label>
             <label>Email Address<input name="email" type="email" /></label>
             <label>
-              Picture (optional)
-              <input name="driverPhoto" type="file" accept="image/*" capture="environment" />
+              Picture *
+              <input name="driverPhoto" type="file" accept="image/*" capture="environment" required />
             </label>
             <p class="field-error" id="driverPhotoError" hidden>Please upload a picture before continuing.</p>
             <div class="preview-grid" id="driverPreview"></div>
@@ -224,6 +224,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=strictet13"></script>
+    <script src="./app.js?v=strictet14"></script>
   </body>
 </html>

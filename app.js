@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet13";
+const APP_BUILD_VERSION = "strictet14";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -454,7 +454,15 @@ function validateScreen() {
     }
   }
 
-  // Picture upload is optional. Do not block the driver if no picture is attached.
+  if (currentScreen === 1) {
+    const driverPhotoInput = form.elements.driverPhoto;
+    if (!driverPhotoInput.files || !driverPhotoInput.files.length) {
+      const message = "Please upload a picture before continuing.";
+      showLicenseValidation("error", message);
+      showActionError(message);
+      return false;
+    }
+  }
 
   return true;
 }

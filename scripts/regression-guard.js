@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet13'), 'index.html must load cache-busted app.js?v=strictet13');
-assert(index.includes('styles.css?v=strictet13'), 'index.html must load cache-busted styles.css?v=strictet13');
+assert(index.includes('app.js?v=strictet14'), 'index.html must load cache-busted app.js?v=strictet14');
+assert(index.includes('styles.css?v=strictet14'), 'index.html must load cache-busted styles.css?v=strictet14');
 
 
 
@@ -111,7 +111,7 @@ assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166."'
 assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'default door must come from locked instructions');
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet13";'), 'app build version must be strictet13');
+assert(app.includes('const APP_BUILD_VERSION = "strictet14";'), 'app build version must be strictet14');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
@@ -127,14 +127,14 @@ assert(app.includes('showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, DRI
 assert(app.includes('function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166)'), 'default assistance detail must use locked docks 165/166 detail');
 
 // Driver picture upload lock.
-assert(index.includes('Picture (optional)'), 'picture label must mark upload optional');
-assert(!index.includes('name="driverPhoto" type="file" accept="image/*" capture="environment" required'), 'driver picture input must not be required');
-assert(app.includes('Picture upload is optional. Do not block the driver if no picture is attached.'), 'app must explicitly keep picture upload optional');
+assert(index.includes('Picture *'), 'picture label must show upload is required');
+assert(index.includes('name="driverPhoto" type="file" accept="image/*" capture="environment" required'), 'driver picture input must be required');
+assert(app.includes('const driverPhotoInput = form.elements.driverPhoto;'), 'app must explicitly check that a picture was selected');
 assert(app.includes('function validateDriverLicenseImage(file)'), 'picture validation function must remain explicit');
 assert(app.includes('finishValidation(true, "Picture accepted.")'), 'any uploaded picture must be accepted');
-assert(!compactApp.includes('form.elements.driverPhoto; if (!driverPhotoInput.files'), 'driver picture validation must not block missing photos');
+assert(compactApp.includes('const driverPhotoInput = form.elements.driverPhoto; if (!driverPhotoInput.files || !driverPhotoInput.files.length)'), 'missing picture must be blocked');
 assert(!app.includes('clear, ' + 'readable') && !app.includes('clear ' + 'picture') && !app.includes('readable ' + 'picture'), 'photo upload must accept any selected picture without quality gating');
-assert(!index.includes('Driver License Picture *'), 'photo label must not imply a strict license photo requirement');
+assert(!index.includes('Driver License Picture *'), 'photo label must not imply a strict license photo quality requirement');
 
 // Public ET recovery must be gone.
 assert(!app.includes('recoverRecentlyCreatedEt'), 'client ET recovery helper must be removed');
