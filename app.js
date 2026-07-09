@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet20";
+const APP_BUILD_VERSION = "strictet21";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -195,6 +195,7 @@ let lastValidatedRn = "";
 let lastValidatedRnResult = null;
 
 nextBtn.addEventListener("click", async () => {
+  try {
   if (currentScreen === 5) {
     if (!validateScreen()) return;
     nextBtn.disabled = true;
@@ -270,6 +271,12 @@ nextBtn.addEventListener("click", async () => {
 
   if (!validateScreen()) return;
   showScreen(currentScreen + 1);
+  } catch (err) {
+    console.error("Continue failed", err);
+    nextBtn.disabled = false;
+    nextBtn.textContent = currentScreen === 5 ? "Complete" : "Continue";
+    showActionError("Please complete the required fields above, then press Continue again.");
+  }
 });
 
 backBtn.addEventListener("click", () => {
@@ -457,8 +464,16 @@ function validateScreen() {
       }
       continue;
     }
-    if (!field.value.trim()) {
-      showActionError(getRequiredFieldMessage(field));
+    if (!String(field.value || "").trim()) {
+      const message = getRequiredFieldMessage(field);
+      const errorEl = active.querySelector(`#${field.name}Error`);
+      if (errorEl) {
+        errorEl.textContent = message;
+        errorEl.hidden = false;
+        errorEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        showActionError(message);
+      }
       field.focus();
       return false;
     }
@@ -468,6 +483,12 @@ function validateScreen() {
     const driverPhotoInput = form.elements.driverPhoto;
     if (!driverPhotoInput.files || !driverPhotoInput.files.length) {
       const message = "Please upload a picture before continuing.";
+      const errorEl = active.querySelector("#driverPhotoError");
+      if (errorEl) {
+        errorEl.textContent = message;
+        errorEl.hidden = false;
+        errorEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       showLicenseValidation("error", message);
       showActionError(message);
       return false;
