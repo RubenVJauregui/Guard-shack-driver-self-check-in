@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet15'), 'index.html must load cache-busted app.js?v=strictet15');
-assert(index.includes('styles.css?v=strictet15'), 'index.html must load cache-busted styles.css?v=strictet15');
+assert(index.includes('app.js?v=strictet18'), 'index.html must load cache-busted app.js?v=strictet18');
+assert(index.includes('styles.css?v=strictet18'), 'index.html must load cache-busted styles.css?v=strictet18');
 
 
 
@@ -111,7 +111,7 @@ assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166."'
 assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'default door must come from locked instructions');
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet15";'), 'app build version must be strictet15');
+assert(app.includes('const APP_BUILD_VERSION = "strictet18";'), 'app build version must be strictet18');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
