@@ -683,7 +683,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     try {
-      const wmsResult = await wmsLookup(rn, `Bearer ${bearerToken}`);
+      const wmsResult = await wmsLookupAny(rn, `Bearer ${bearerToken}`);
       sendJson(res, wmsResult);
     } catch (err) {
       sendJson(res, { customer: "", error: "WMS lookup failed" });
@@ -1268,6 +1268,117 @@ function formatWmsLookupResult(match) {
     carrierName: match.carrierName || "",
     appointmentTime: match.appointmentTime || ""
   };
+}
+
+function formatWmsOrderLookupResult(match, rawInput) {
+  return {
+    type: "outbound",
+    matchType: "dn-order",
+    matchedIdentifier: rawInput,
+    customer: match.customerName || match.customer || "",
+    customerCode: match.customerCode || "",
+    customerId: match.customerId || "",
+    loadNo: match.loadNo || match.wmsLoadNo || match.referenceNo || "",
+    loadId: match.loadId || match.load_id || "",
+    orderIds: [match.id || match.orderId || match.orderNo || match.dnNo].filter(Boolean),
+    orderId: match.id || match.orderId || match.orderNo || match.dnNo || "",
+    poNo: match.poNo || match.purchaseOrderNo || "",
+    referenceNo: match.referenceNo || match.refNo || "",
+    soNo: Array.isArray(match.soNos) ? match.soNos.join(",") : (match.soNo || match.soNos || ""),
+    carrierName: match.carrierName || "",
+    appointmentTime: match.appointmentTime || match.appointment || ""
+  };
+}
+
+function isStrongOrderLookupMatch(input, record) {
+  const normalized = String(input || "").trim().toUpperCase();
+  const withoutDn = normalized.replace(/^DN[-\s]*/i, "");
+  const candidates = [
+    record.id,
+    record.orderId,
+    record.orderNo,
+    record.dnNo,
+    record.dnNumber,
+    record.soNo,
+    record.soNumber,
+    record.referenceNo,
+    record.refNo,
+    record.poNo,
+    record.purchaseOrderNo,
+    record.loadNo,
+    record.wmsLoadNo
+  ];
+  if (Array.isArray(record.soNos)) candidates.push(...record.soNos);
+  const tokens = candidates
+    .map((value) => String(value || "").trim().toUpperCase())
+    .filter(Boolean);
+  return tokens.some((token) => token === normalized || token === withoutDn || token.replace(/^DN[-\s]*/i, "") === withoutDn);
+}
+
+function wmsOrderLookup(keyword, authHeader) {
+  return new Promise((resolve) => {
+    const rawInput = String(keyword || "").trim();
+    if (isGenericLookupInput(rawInput)) {
+      resolve({ customer: "" });
+      return;
+    }
+    const lookupUrl = new URL(`${WMS_BASE_URL}/wms-bam/outbound/order/search-by-paging`);
+    const postBody = JSON.stringify({ pageNo: 1, pageSize: 10, keyword: rawInput });
+    const mod = lookupUrl.protocol === "https:" ? https : http;
+    const req = mod.request(lookupUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "x-tenant-id": WMS_TENANT_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": Buffer.byteLength(postBody)
+      },
+      timeout: 5000
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          const raw = parsed?.data?.list || parsed?.data?.records || parsed?.data || [];
+          const list = Array.isArray(raw) ? raw : [];
+          const match = list.find((item) => (item?.customerName || item?.customer || item?.customerId) && isStrongOrderLookupMatch(rawInput, item));
+          if (match) {
+            const result = formatWmsOrderLookupResult(match, rawInput);
+            console.log(`[WMS order lookup] identifier=${rawInput} -> order="${result.orderId}" loadNo="${result.loadNo}" customer="${result.customer}"`);
+            resolve(result);
+          } else {
+            console.log(`[WMS order lookup] identifier=${rawInput} -> no exact DN/order/SO match (${list.length} results)`);
+            resolve({ customer: "" });
+          }
+        } catch (err) {
+          console.log(`[WMS order lookup] identifier=${rawInput} -> parse error: ${err.message}`);
+          resolve({ customer: "" });
+        }
+      });
+    });
+    req.on("error", (err) => {
+      console.log(`[WMS order lookup] identifier=${rawInput} -> network error: ${err.message}`);
+      resolve({ customer: "" });
+    });
+    req.on("timeout", () => {
+      console.log(`[WMS order lookup] identifier=${rawInput} -> timeout`);
+      req.destroy();
+      resolve({ customer: "" });
+    });
+    req.write(postBody);
+    req.end();
+  });
+}
+
+async function wmsLookupAny(identifier, authHeader) {
+  const loadResult = await wmsLookup(identifier, authHeader);
+  if (loadResult.customer) return loadResult;
+  const orderResult = await wmsOrderLookup(identifier, authHeader);
+  if (orderResult.customer) return orderResult;
+  return { customer: "" };
 }
 
 function wmsLookup(rn, authHeader) {

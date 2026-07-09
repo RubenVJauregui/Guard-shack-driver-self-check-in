@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet14'), 'index.html must load cache-busted app.js?v=strictet14');
-assert(index.includes('styles.css?v=strictet14'), 'index.html must load cache-busted styles.css?v=strictet14');
+assert(index.includes('app.js?v=strictet15'), 'index.html must load cache-busted app.js?v=strictet15');
+assert(index.includes('styles.css?v=strictet15'), 'index.html must load cache-busted styles.css?v=strictet15');
 
 
 
@@ -60,7 +60,7 @@ const step3Html = index.slice(step3Start, step4Start);
 const step4Html = index.slice(step4Start, step5Start);
 assert(step3Html.includes('Choose your entry task'), 'Step 3 must show Choose your entry task');
 assert(!step3Html.includes('PO / RN / Load #') && !step3Html.includes('Comments') && !step3Html.includes('BOL / Load / Seal Picture'), 'Step 3 must show only the entry task selection, not load detail fields');
-assert(step4Html.includes('PO / RN / Load #') && step4Html.includes('Comments') && step4Html.includes('BOL / Load / Seal Picture'), 'Step 4 must contain the load detail fields for non-immediate tasks');
+assert(step4Html.includes('PO / RN / Load # / DN') && step4Html.includes('Comments') && step4Html.includes('BOL / Load / Seal Picture'), 'Step 4 must contain the load detail fields for non-immediate tasks');
 assert(index.includes('class="screen complete-screen" data-screen="6"'), 'Complete screen must be data-screen 6 after adding Load Details screen');
 assert(app.includes('function isImmediateInstructionTask()'), 'app must detect immediate instruction tasks');
 assert(app.includes('showImmediateTaskInstructionScreen(getImmediateTaskInstruction())'), 'immediate instruction tasks must show their message on the next screen');
@@ -70,7 +70,7 @@ assert(app.includes('if (currentScreen === 5)'), 'final submit must happen on re
 // Driver form field lock.
 assert(!index.includes('Reference #<input name="referenceNo"'), 'Step 3 must not show a Reference # input box');
 assert(!index.includes('name="referenceNo"'), 'Reference # field must not exist in the public form');
-assert(index.includes('PO / RN / Load #<input name="loadNo"'), 'Step 3 must show only the PO / RN / Load # box for load reference entry');
+assert(index.includes('PO / RN / Load # / DN<input name="loadNo"'), 'Step 3 must show only the PO / RN / Load # box for load reference entry');
 
 // Door routing and assistance lock.
 
@@ -111,7 +111,7 @@ assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166."'
 assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'default door must come from locked instructions');
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet14";'), 'app build version must be strictet14');
+assert(app.includes('const APP_BUILD_VERSION = "strictet15";'), 'app build version must be strictet15');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
@@ -142,6 +142,14 @@ assert(!app.includes('/api/yms-entry-ticket-recover'), 'client must not call pub
 assert(!server.includes('/api/yms-entry-ticket-recover'), 'server recovery endpoint must be removed');
 assert(!server.includes('recoverYmsEntryTicket'), 'server recovery-by-load helper must be removed');
 assert(!server.includes('extractYmsList'), 'server recovery list extractor must be removed');
+
+
+// DN/order lookup lock.
+assert(server.includes('function wmsOrderLookup(keyword, authHeader)'), 'server must search WMS outbound orders/DNs when load lookup misses');
+assert(server.includes('/wms-bam/outbound/order/search-by-paging'), 'server must call outbound order search for DN/order/SO lookup');
+assert(server.includes('function wmsLookupAny(identifier, authHeader)'), 'server must try load lookup before DN/order lookup');
+assert(server.includes('const wmsResult = await wmsLookupAny(rn, `Bearer ${bearerToken}`);'), '/api/wms-lookup must use the combined WMS lookup');
+assert(server.includes('matchType: "dn-order"'), 'DN/order matches must be identified in WMS lookup result');
 
 // Strict ET creation lock.
 assert(server.includes('if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket")'), 'server must expose /api/yms-entry-ticket');

@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet14";
+const APP_BUILD_VERSION = "strictet15";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -220,7 +220,7 @@ nextBtn.addEventListener("click", async () => {
     const identifiers = getLoadIdentifiers(data);
 
     if (!identifiers.length) {
-      showActionError("Please enter a PO / RN / Load # before continuing.");
+      showActionError("Please enter a PO / RN / Load # / DN before continuing.");
       return;
     }
 
@@ -252,7 +252,7 @@ nextBtn.addEventListener("click", async () => {
       if (rnLookupAttempts >= 3) {
         showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166);
       } else {
-        showActionError(`PO / RN / Load "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
+        showActionError(`PO / RN / Load # / DN "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
       }
     }
     return;
@@ -512,7 +512,7 @@ function buildReview() {
     ["Equipment", `${data.equipmentType || ""} ${data.equipmentNo || ""}`.trim()],
     ["Entry Task", data.entryTask || ""],
     ["Reference #", data.referenceNo || ""],
-    ["PO / RN / Load", data.loadNo || ""]
+    ["PO / RN / Load / DN", data.loadNo || ""]
   ];
 
   review.innerHTML = rows
