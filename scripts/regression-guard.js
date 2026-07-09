@@ -178,8 +178,16 @@ assert(server.includes('process.on("uncaughtException"') && server.includes('pro
 assert(compactServer.includes('req.on("aborted", onAborted);'), 'readBody must handle aborted requests');
 assert(compactServer.includes('if (res.writableEnded || res.destroyed) return;'), 'sendJson must skip writes to disconnected responses');
 
-if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: strict Valley View ET and assistance behavior is locked.');
-
 assert(app.includes('return DRIVER_INSTRUCTIONS.DOCK_45;'), 'customers not found on the Excel sheet must route to Dock 45');
 assert(app.includes('showLargeInstructionScreen(WISE_NOT_FOUND_INSTRUCTION'), 'WISE not-found path must immediately show docks 165/166');
+
+assert(server.includes('const ADMIN_CHANGE_TOKEN = process.env.ADMIN_CHANGE_TOKEN || "";'), 'ADMIN_CHANGE_TOKEN must be configured as a runtime env var');
+assert(server.includes('function requireAdminChangeToken(req, res)'), 'protected dashboard changes must require admin token');
+assert(server.includes('if (!requireAdminChangeToken(req, res)) return;'), 'mutating dashboard/check-in routes must enforce admin token');
+assert(dashboardJs.includes('X-Admin-Change-Token'), 'dashboard must send admin change token for protected changes');
+assert(!app.toLowerCase().includes('recover by load'), 'public ET recovery-by-load marker must not return');
+assert(!read('staging-door-config.js').includes('Fontana'), 'staging config must not contain stale Fontana comments');
+assert(!read('staging-door-config.js').includes('SharkNinja'), 'staging config must not contain stale SharkNinja comments');
+
+if (process.exitCode) process.exit(process.exitCode);
+console.log('Regression guard passed: strict Valley View ET and assistance behavior is locked.');

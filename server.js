@@ -49,8 +49,21 @@ const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() ===
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Valley View Driver Check-In <no-reply@unisco.com>";
+const ADMIN_CHANGE_TOKEN = process.env.ADMIN_CHANGE_TOKEN || "";
 const ymsEtBySubmissionSignature = new Map();
 
+function requireAdminChangeToken(req, res) {
+  if (!ADMIN_CHANGE_TOKEN) {
+    sendJson(res, { ok: false, error: "Admin change protection is not configured" }, 503);
+    return false;
+  }
+  const provided = req.headers["x-admin-change-token"] || req.headers["x-owner-token"] || "";
+  if (String(provided) !== ADMIN_CHANGE_TOKEN) {
+    sendJson(res, { ok: false, error: "Not authorized to make changes" }, 403);
+    return false;
+  }
+  return true;
+}
 
 function isEmailEnabled() {
   return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && ALERT_RECIPIENTS.length);
@@ -746,6 +759,7 @@ const server = http.createServer(async (req, res) => {
 
 
   if (req.method === "PATCH" && /^\/api\/checkins\/(\d+)\/assignment$/.test(url.pathname)) {
+    if (!requireAdminChangeToken(req, res)) return;
     const id = url.pathname.match(/\/api\/checkins\/(\d+)\/assignment/)[1];
     try {
       const body = await readBody(req);
@@ -770,6 +784,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
   }
 
   if ((req.method === "PATCH" || req.method === "PUT") && url.pathname.startsWith("/api/checkins/")) {
+    if (!requireAdminChangeToken(req, res)) return;
     const id = url.pathname.split("/").pop();
     if (!id || isNaN(Number(id))) { sendJson(res, { error: "Invalid ID" }, 400); return; }
     try {
@@ -934,6 +949,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
   }
 
   if (req.method === "POST" && url.pathname.match(/^\/api\/checkins\/(\d+)\/load-task$/)) {
+    if (!requireAdminChangeToken(req, res)) return;
     const id = Number(url.pathname.match(/\/api\/checkins\/(\d+)\/load-task/)[1]);
     try {
       const body = await readBody(req);

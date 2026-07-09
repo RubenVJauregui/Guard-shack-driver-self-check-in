@@ -594,7 +594,7 @@ async function completeCheckin() {
     }
   }
 
-  // Do not recover by load alone; exact idempotency signature is required to reuse an ET.
+  // Exact idempotency signature is required to reuse an ET.
 
   // Block completion if no confirmed ET. No final screen or door/dock assignment may show without this.
   if (!etNumber) {
