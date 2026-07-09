@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet19";
+const APP_BUILD_VERSION = "strictet20";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -143,11 +143,25 @@ document.addEventListener("click", (event) => {
   languageBtn.setAttribute("aria-expanded", "false");
 });
 
-document.querySelector("#loginMode").addEventListener("change", (event) => {
-  const apptMode = event.target.value.includes("APPT");
-  document.querySelector(".phone-row").style.display = apptMode ? "none" : "grid";
-  document.querySelector(".login-alt").style.display = apptMode ? "grid" : "none";
-});
+function updateLoginModeRequirements() {
+  const loginMode = document.querySelector("#loginMode");
+  const apptMode = loginMode && loginMode.value.includes("APPT");
+  const phoneRow = document.querySelector(".phone-row");
+  const loginAlt = document.querySelector(".login-alt");
+  const phoneInput = form.elements.phone;
+  const appointmentInput = form.elements.appointment;
+  const passcodeInput = form.elements.passcode;
+
+  if (phoneRow) phoneRow.style.display = apptMode ? "none" : "grid";
+  if (loginAlt) loginAlt.style.display = apptMode ? "grid" : "none";
+
+  if (phoneInput) phoneInput.required = !apptMode;
+  if (appointmentInput) appointmentInput.required = Boolean(apptMode);
+  if (passcodeInput) passcodeInput.required = Boolean(apptMode);
+}
+
+document.querySelector("#loginMode").addEventListener("change", updateLoginModeRequirements);
+updateLoginModeRequirements();
 
 function isDropOffEmpty() {
   const task = (form.elements.entryTask?.value || "").trim().toLowerCase();
