@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet18";
+const APP_BUILD_VERSION = "strictet19";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -173,8 +173,9 @@ function getImmediateTaskInstruction() {
   return DRIVER_INSTRUCTIONS.DROP_EMPTY;
 }
 
-// After 3 failed PO/RN/Load lookups, show this message
-const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;
+// If the load, RN, DN, PO, or pickup number is not found in WISE, show this locked message.
+const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
+const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;
 let rnLookupAttempts = 0;
 let lastValidatedRn = "";
 let lastValidatedRnResult = null;
@@ -248,12 +249,7 @@ nextBtn.addEventListener("click", async () => {
       showScreen(5);
     } else {
       rnLookupAttempts++;
-      const tried = identifiers.join(", ");
-      if (rnLookupAttempts >= 3) {
-        showLargeInstructionScreen(FALLBACK_AFTER_MAX_ATTEMPTS, DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166);
-      } else {
-        showActionError(`PO / RN / Load # / DN "${tried}" was not found in the system. Please check the number and try again. (Attempt ${rnLookupAttempts}/3)`);
-      }
+      showLargeInstructionScreen(WISE_NOT_FOUND_INSTRUCTION, DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166);
     }
     return;
   }
@@ -876,7 +872,8 @@ function getDoorAssignment(customerValue) {
   if (door70Customers.some((customer) => isDoorCustomerMatch(normalized, customer))) {
     return DRIVER_INSTRUCTIONS.DOCK_94;
   }
-  return EXCEL_DEFAULT_DOOR;
+  // If WISE finds the customer but the customer is not on the Excel door sheet, route to Dock 45.
+  return DRIVER_INSTRUCTIONS.DOCK_45;
 }
 
 function normalizeForDoorMatch(value = "") {

@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet18'), 'index.html must load cache-busted app.js?v=strictet18');
-assert(index.includes('styles.css?v=strictet18'), 'index.html must load cache-busted styles.css?v=strictet18');
+assert(index.includes('app.js?v=strictet19'), 'index.html must load cache-busted app.js?v=strictet19');
+assert(index.includes('styles.css?v=strictet19'), 'index.html must load cache-busted styles.css?v=strictet19');
 
 
 
@@ -110,8 +110,9 @@ assert(app.includes('const DRIVER_INSTRUCTIONS = Object.freeze({'), 'driver-faci
 assert(app.includes('DEFAULT_165_166: "Go to the door between docks 165 & 166."'), 'normal Excel default door must exactly match the hardcoded docks 165/166 message');
 assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'default door must come from locked instructions');
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
-assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = ASSISTANCE_DOOR_INSTRUCTION;'), 'failed lookup fallback must use assistance instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet18";'), 'app build version must be strictet18');
+assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
+assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
+assert(app.includes('const APP_BUILD_VERSION = "strictet19";'), 'app build version must be strictet19');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 45"'), 'Excel Dock 45 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
@@ -179,3 +180,6 @@ assert(compactServer.includes('if (res.writableEnded || res.destroyed) return;')
 
 if (process.exitCode) process.exit(process.exitCode);
 console.log('Regression guard passed: strict Valley View ET and assistance behavior is locked.');
+
+assert(app.includes('return DRIVER_INSTRUCTIONS.DOCK_45;'), 'customers not found on the Excel sheet must route to Dock 45');
+assert(app.includes('showLargeInstructionScreen(WISE_NOT_FOUND_INSTRUCTION'), 'WISE not-found path must immediately show docks 165/166');
