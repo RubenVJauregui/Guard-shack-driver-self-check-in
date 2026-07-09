@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet11";
+const APP_BUILD_VERSION = "strictet12";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -457,13 +457,13 @@ function validateScreen() {
   if (currentScreen === 1) {
     const driverPhotoInput = form.elements.driverPhoto;
     if (!driverPhotoInput.files || !driverPhotoInput.files.length) {
-      const message = "Please upload a picture of your driver license before continuing.";
+      const message = "Please upload a picture before continuing.";
       showLicenseValidation("error", message);
       showActionError(message);
       return false;
     }
     if (driverPhotoValidating || !driverPhotoValidated) {
-      const message = "Please upload a clear, readable picture of your driver license before continuing.";
+      const message = "Please upload a picture before continuing.";
       showLicenseValidation(driverPhotoValidating ? "info" : "error", message);
       showActionError(message);
       return false;
@@ -492,7 +492,7 @@ function getRequiredFieldMessage(field) {
     firstName: "Please enter your first name before continuing.",
     lastName: "Please enter your last name before continuing.",
     license: "Please enter your driver license number before continuing.",
-    driverPhoto: "Please upload a clear, readable picture of your driver license before continuing.",
+    driverPhoto: "Please upload a picture before continuing.",
     carrierName: "Please enter the carrier name before continuing.",
     plate: "Please enter the license plate number before continuing.",
     equipmentNo: "Please enter the container or trailer number before continuing.",
@@ -948,73 +948,26 @@ function finishValidation(accepted, message) {
     driverPhotoValidationTimer = null;
   }
   if (accepted) {
-    showLicenseValidation("success", message || "Driver license photo accepted.");
+    showLicenseValidation("success", message || "Picture accepted.");
   } else {
-    showLicenseValidation("error", message || "Please upload a clear picture of your driver license.");
+    showLicenseValidation("error", message || "Please upload a picture before continuing.");
   }
 }
 
 function validateDriverLicenseImage(file) {
   driverPhotoValidated = false;
-  driverPhotoValidating = true;
-  clearLicenseValidation();
-  showLicenseValidation("info", "Checking driver license photo...");
-  nextBtn.disabled = true;
+  driverPhotoValidating = false;
+  if (driverPhotoValidationTimer) {
+    clearTimeout(driverPhotoValidationTimer);
+    driverPhotoValidationTimer = null;
+  }
 
-  // Safety reminder: keep waiting instead of incorrectly rejecting or accepting while validation is still running.
-  driverPhotoValidationTimer = setTimeout(() => {
-    if (driverPhotoValidating) {
-      showLicenseValidation("info", "Still checking your driver license photo, please wait.");
-    }
-  }, 4000);
-
-  if (!file || !file.type.startsWith("image/")) {
-    finishValidation(false, "Please upload an image file.");
+  if (!file) {
+    finishValidation(false, "Please upload a picture before continuing.");
     return;
   }
 
-  // Extremely small files (< 5KB) are unlikely to be real photos
-  if (file.size < 5000) {
-    finishValidation(false, "Please upload a clear picture of your driver license.");
-    return;
-  }
-
-  // If file is a normal camera image (> 30KB), accept it immediately
-  // Real phone camera photos are typically 500KB-5MB
-  if (file.size > 30000) {
-    // Still verify it's a loadable image
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(img.src);
-      if (img.width < 100 || img.height < 100) {
-        finishValidation(false, "Please upload a clear picture of your driver license.");
-      } else {
-        finishValidation(true, "Driver license photo accepted.");
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(img.src);
-      finishValidation(false, "Could not read image. Please try again with a different photo.");
-    };
-    img.src = URL.createObjectURL(file);
-    return;
-  }
-
-  // Small-ish image (5-30KB): verify it loads and has reasonable dimensions
-  const img = new Image();
-  img.onload = () => {
-    URL.revokeObjectURL(img.src);
-    if (img.width < 100 || img.height < 100) {
-      finishValidation(false, "Please upload a clear picture of your driver license.");
-    } else {
-      finishValidation(true, "Driver license photo accepted.");
-    }
-  };
-  img.onerror = () => {
-    URL.revokeObjectURL(img.src);
-    finishValidation(false, "Could not read image. Please try again with a different photo.");
-  };
-  img.src = URL.createObjectURL(file);
+  finishValidation(true, "Picture accepted.");
 }
 
 function showLicenseValidation(type, message) {
