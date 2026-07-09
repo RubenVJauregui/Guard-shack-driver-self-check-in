@@ -1104,6 +1104,105 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/yms-window-checkin-complete") {
+    try {
+      const body = await readBody(req);
+      const payload = JSON.parse(body || "{}");
+      const etNumber = payload.etNumber || "";
+      const loadId = payload.loadId || "";
+      const customerId = payload.customerId || "";
+      const dockId = payload.dockId || "";
+      const assigneeUserId = payload.assigneeUserId || "";
+      const assigneeUserName = payload.assigneeUserName || "";
+
+      if (!etNumber) { sendJson(res, { completed: false, reason: "Missing ET number" }); return; }
+      if (!loadId) { sendJson(res, { completed: false, reason: "Missing loadId — cannot safely complete window check-in without confirmed WMS load" }); return; }
+
+      const ymsToken = await getYmsBearerToken();
+      if (!ymsToken) { sendJson(res, { completed: false, reason: "YMS auth unavailable" }, 503); return; }
+
+      // Step 1: Read ET detail to verify status
+      let etDetail;
+      try {
+        etDetail = await ymsGetRequest(ymsToken, `/entry-ticket/${etNumber}/window-checkin-detail`);
+      } catch {
+        try {
+          etDetail = await ymsGetRequest(ymsToken, `/self-check-in/${etNumber}/entry-detail`);
+        } catch (err2) {
+          sendJson(res, { completed: false, reason: `Cannot read ET detail: ${err2.message}` });
+          return;
+        }
+      }
+
+      const entryStatus = etDetail?.entryStatus || etDetail?.status || etDetail?.data?.entryStatus || etDetail?.data?.status || "";
+      const createdSource = etDetail?.createdSource || etDetail?.data?.createdSource || "";
+      const existingLoadTaskId = etDetail?.loadTaskId || etDetail?.data?.loadTaskId || "";
+      console.log(`[YMS window] ET=${etNumber} status=${entryStatus} source=${createdSource} existingLoadTask=${existingLoadTaskId}`);
+
+      if (createdSource && createdSource !== "SELF_CHECKIN") {
+        sendJson(res, { completed: false, reason: `ET source is ${createdSource}, not SELF_CHECKIN` }); return;
+      }
+      if (entryStatus && entryStatus !== "NEED_WINDOW_CHECK_IN" && entryStatus !== "NEW") {
+        sendJson(res, { completed: false, reason: `ET status is ${entryStatus}, not eligible for window completion` }); return;
+      }
+      if (existingLoadTaskId) {
+        sendJson(res, { completed: false, reason: "ET already has a load task — window check-in may already be done" }); return;
+      }
+
+      // Step 2: Refresh basic info (already attached during creation, but refresh ensures consistency)
+      if (payload.driverInfo || payload.vehicleInfo) {
+        try {
+          await attachBasicInfo(ymsToken, etNumber, payload);
+          console.log(`[YMS window] Basic info refreshed for ${etNumber}`);
+        } catch (err) {
+          console.log(`[YMS window] Basic info refresh failed (non-blocking): ${err.message}`);
+        }
+      }
+
+      // Step 3: Refresh trip info
+      if (loadId || customerId) {
+        try {
+          await attachTripInfo(ymsToken, etNumber, {
+            direction: payload.direction || "outbound",
+            customerId,
+            loadId,
+            loadNo: payload.loadNo || "",
+            receiptId: payload.receiptId || "",
+            poNo: payload.poNo || "",
+            referenceNo: payload.referenceNo || ""
+          });
+          console.log(`[YMS window] Trip info refreshed for ${etNumber}`);
+        } catch (err) {
+          console.log(`[YMS window] Trip info refresh failed (non-blocking): ${err.message}`);
+        }
+      }
+
+      // Step 4: Complete window check-in via task-entry-checkin
+      const taskBody = {
+        entryId: etNumber,
+        outboundTask: {
+          assignLocationId: dockId || "",
+          assigneeUserId: assigneeUserId || "",
+          assigneeUserName: assigneeUserName || "",
+          description: `Self-check-in window completion for load ${loadId}`
+        }
+      };
+
+      try {
+        const taskResult = await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", taskBody);
+        console.log(`[YMS window] task-info-checkin completed for ${etNumber}`);
+        sendJson(res, { completed: true, etNumber, status: "WINDOW_CHECKED_IN", taskResult: taskResult || {} });
+      } catch (err) {
+        console.log(`[YMS window] task-info-checkin failed for ${etNumber}: ${err.message}`);
+        sendJson(res, { completed: false, reason: `Window task completion failed: ${err.message}`, etNumber });
+      }
+    } catch (err) {
+      console.log(`[YMS window] endpoint error: ${err.message}`);
+      sendJson(res, { completed: false, reason: "Window check-in endpoint error" });
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname.startsWith("/api/identity/")) {
     const id = path.basename(url.pathname);
     const file = path.join(dataDir, `${id}.json`);
@@ -1210,6 +1309,75 @@ function getLanIp() {
     }
   }
   return "";
+}
+
+function ymsGetRequest(ymsToken, path) {
+  return new Promise((resolve, reject) => {
+    const reqUrl = new URL(`${YMS_BASE_URL}${path}`);
+    const mod = reqUrl.protocol === "https:" ? https : http;
+    const req = mod.request(reqUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${ymsToken}`,
+        "X-Tenant-ID": WMS_TENANT_ID,
+        "X-Yard-ID": WMS_FACILITY_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "Item-Time-Zone": TIMEZONE,
+        Accept: "application/json"
+      },
+      timeout: 8000
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(parsed?.data || parsed);
+          else reject(new Error(`YMS GET ${path} status=${res.statusCode}`));
+        } catch (err) { reject(new Error(`YMS GET parse: ${err.message}`)); }
+      });
+    });
+    req.on("error", (err) => reject(err));
+    req.on("timeout", () => { req.destroy(); reject(new Error("YMS GET timeout")); });
+    req.end();
+  });
+}
+
+function ymsPostRequest(ymsToken, path, body) {
+  return new Promise((resolve, reject) => {
+    const reqUrl = new URL(`${YMS_BASE_URL}${path}`);
+    const postBody = JSON.stringify(body);
+    const mod = reqUrl.protocol === "https:" ? https : http;
+    const req = mod.request(reqUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ymsToken}`,
+        "X-Tenant-ID": WMS_TENANT_ID,
+        "X-Yard-ID": WMS_FACILITY_ID,
+        "x-facility-id": WMS_FACILITY_ID,
+        "Item-Time-Zone": TIMEZONE,
+        "x-channel": "WEB",
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Content-Length": String(Buffer.byteLength(postBody))
+      },
+      timeout: 8000
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(body);
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(parsed?.data || parsed);
+          else reject(new Error(`YMS POST ${path} status=${res.statusCode}`));
+        } catch (err) { reject(new Error(`YMS POST parse: ${err.message}`)); }
+      });
+    });
+    req.on("error", (err) => reject(err));
+    req.on("timeout", () => { req.destroy(); reject(new Error("YMS POST timeout")); });
+    req.write(postBody);
+    req.end();
+  });
 }
 
 function normalizeLookupValue(value) {

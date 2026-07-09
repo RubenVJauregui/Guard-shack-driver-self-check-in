@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet24";
+const APP_BUILD_VERSION = "strictet25";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -788,6 +788,49 @@ async function completeCheckin() {
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your ${data.entryTask || "check-in"} has been recorded.`;
+  }
+
+  // Attempt YMS window check-in completion if WMS loadId exists
+  let windowCheckinResult = null;
+  if (wmsResult.loadId && etNumber && !isDropOffEmpty() && !isDropOffFull() && !isPickupEmpty()) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const wcRes = await fetch("/api/yms-window-checkin-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          etNumber,
+          loadId: wmsResult.loadId || "",
+          loadNo: wmsResult.loadNo || "",
+          customerId: wmsResult.customerId || "",
+          direction: wmsResult.type === "inbound" ? "inbound" : "outbound",
+          receiptId: wmsResult.receiptId || "",
+          poNo: wmsResult.poNo || "",
+          referenceNo: wmsResult.referenceNo || data.referenceNo || "",
+          dockId: doorResult.stagedLocation || "",
+          assigneeUserId: "",
+          assigneeUserName: "",
+          driverInfo: {
+            driverPhone: data.driverPhone || data.phone || "",
+            firstName: data.firstName || "",
+            lastName: data.lastName || "",
+            driverName: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+            licenseNumber: data.license || ""
+          },
+          carrierInfo: { carrierName: data.carrierName || "", usdotNumber: data.usdot || "" },
+          vehicleInfo: { licensePlate: data.plate || "", vehicleType: data.vehicleType || "Tractor" },
+          equipmentInfo: { equipmentNo: data.equipmentNo || "", equipmentType: data.equipmentType || "Trailer" }
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (wcRes.ok) {
+        windowCheckinResult = await wcRes.json().catch(() => null);
+      }
+    } catch {
+      // Window completion is best-effort; do not block driver.
+    }
   }
 
   localStorage.setItem("driverCheckinDraft", JSON.stringify(data));
