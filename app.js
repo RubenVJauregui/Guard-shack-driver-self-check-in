@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet21";
+const APP_BUILD_VERSION = "strictet22";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -162,6 +162,36 @@ function updateLoginModeRequirements() {
 
 document.querySelector("#loginMode").addEventListener("change", updateLoginModeRequirements);
 updateLoginModeRequirements();
+function validateLoginScreen() {
+  updateLoginModeRequirements();
+  const loginMode = document.querySelector("#loginMode");
+  const apptMode = loginMode && loginMode.value.includes("APPT");
+  const phoneInput = form.elements.phone;
+  const appointmentInput = form.elements.appointment;
+  const passcodeInput = form.elements.passcode;
+
+  if (apptMode) {
+    if (!String(appointmentInput?.value || "").trim()) {
+      showActionError("Please enter your appointment number before continuing.");
+      appointmentInput?.focus();
+      return false;
+    }
+    if (!String(passcodeInput?.value || "").trim()) {
+      showActionError("Please enter your passcode before continuing.");
+      passcodeInput?.focus();
+      return false;
+    }
+    return true;
+  }
+
+  if (!String(phoneInput?.value || "").trim()) {
+    showActionError("Please enter your phone number before continuing.");
+    phoneInput?.focus();
+    return false;
+  }
+  return true;
+}
+
 
 function isDropOffEmpty() {
   const task = (form.elements.entryTask?.value || "").trim().toLowerCase();
@@ -196,6 +226,12 @@ let lastValidatedRnResult = null;
 
 nextBtn.addEventListener("click", async () => {
   try {
+  if (currentScreen === 0) {
+    if (!validateLoginScreen()) return;
+    showScreen(1);
+    return;
+  }
+
   if (currentScreen === 5) {
     if (!validateScreen()) return;
     nextBtn.disabled = true;
