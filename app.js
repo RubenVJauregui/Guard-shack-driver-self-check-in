@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet25";
+const APP_BUILD_VERSION = "strictet26";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -209,7 +209,8 @@ function isPickupEmpty() {
 }
 
 function isImmediateInstructionTask() {
-  return isDropOffFull() || isDropOffEmpty() || isPickupEmpty();
+  // Drop Off Full must collect RN/load details and create an ET before showing the final message.
+  return isDropOffEmpty() || isPickupEmpty();
 }
 
 function getImmediateTaskInstruction() {
@@ -792,7 +793,7 @@ async function completeCheckin() {
 
   // Attempt YMS window check-in completion if WMS loadId exists
   let windowCheckinResult = null;
-  if (wmsResult.loadId && etNumber && !isDropOffEmpty() && !isDropOffFull() && !isPickupEmpty()) {
+  if (wmsResult.loadId && etNumber && !isDropOffEmpty() && !isPickupEmpty()) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);

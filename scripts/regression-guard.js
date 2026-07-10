@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet25'), 'index.html must load cache-busted app.js?v=strictet25');
-assert(index.includes('styles.css?v=strictet25'), 'index.html must load cache-busted styles.css?v=strictet25');
+assert(index.includes('app.js?v=strictet26'), 'index.html must load cache-busted app.js?v=strictet26');
+assert(index.includes('styles.css?v=strictet26'), 'index.html must load cache-busted styles.css?v=strictet26');
 
 
 
@@ -63,6 +63,8 @@ assert(!step3Html.includes('PO / RN / Load #') && !step3Html.includes('Comments'
 assert(step4Html.includes('PO / RN / Load # / DN') && step4Html.includes('Comments') && step4Html.includes('BOL / Load / Seal Picture'), 'Step 4 must contain the load detail fields for non-immediate tasks');
 assert(index.includes('class="screen complete-screen" data-screen="6"'), 'Complete screen must be data-screen 6 after adding Load Details screen');
 assert(app.includes('function isImmediateInstructionTask()'), 'app must detect immediate instruction tasks');
+assert(!app.includes('return isDropOffFull() || isDropOffEmpty() || isPickupEmpty();'), 'Drop Off Full must not be an immediate instruction task');
+assert(app.includes('Drop Off Full must collect RN/load details and create an ET before showing the final message.'), 'Drop Off Full must require RN/load details and ET before final message');
 assert(app.includes('showImmediateTaskInstructionScreen(getImmediateTaskInstruction())'), 'immediate instruction tasks must show their message on the next screen');
 assert(app.includes('if (currentScreen === 4)'), 'load detail validation must happen on Step 4');
 assert(app.includes('function updateLoginModeRequirements()'), 'first-screen login mode must update required fields so Continue works');
@@ -118,7 +120,7 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet25";'), 'app build version must be strictet25');
+assert(app.includes('const APP_BUILD_VERSION = "strictet26";'), 'app build version must be strictet26');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 40"'), 'Excel Dock 40 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
