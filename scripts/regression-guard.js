@@ -190,6 +190,7 @@ assert(app.includes('return DRIVER_INSTRUCTIONS.DOCK_45;'), 'customers not found
 assert(app.includes('showLargeInstructionScreen(WISE_NOT_FOUND_INSTRUCTION'), 'WISE not-found path must immediately show docks 165/166');
 
 assert(server.includes('const ADMIN_CHANGE_TOKEN = process.env.ADMIN_CHANGE_TOKEN || "";'), 'ADMIN_CHANGE_TOKEN must be configured as a runtime env var');
+assert(server.includes('ADDITIONAL_ADMIN_CHANGE_TOKENS'), 'additional admin change tokens must be supported for delegated app access');
 assert(server.includes('function requireAdminChangeToken(req, res)'), 'protected dashboard changes must require admin token');
 assert(server.includes('if (!requireAdminChangeToken(req, res)) return;'), 'mutating dashboard/check-in routes must enforce admin token');
 assert(dashboardJs.includes('X-Admin-Change-Token'), 'dashboard must send admin change token for protected changes');

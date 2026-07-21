@@ -50,15 +50,20 @@ const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER || "Valley View Driver Check-In <no-reply@unisco.com>";
 const ADMIN_CHANGE_TOKEN = process.env.ADMIN_CHANGE_TOKEN || "";
+const ADDITIONAL_ADMIN_CHANGE_TOKENS = (process.env.ADDITIONAL_ADMIN_CHANGE_TOKENS || "")
+  .split(",")
+  .map((token) => token.trim())
+  .filter(Boolean);
 const ymsEtBySubmissionSignature = new Map();
 
 function requireAdminChangeToken(req, res) {
-  if (!ADMIN_CHANGE_TOKEN) {
+  const validTokens = [ADMIN_CHANGE_TOKEN, ...ADDITIONAL_ADMIN_CHANGE_TOKENS].filter(Boolean);
+  if (!validTokens.length) {
     sendJson(res, { ok: false, error: "Admin change protection is not configured" }, 503);
     return false;
   }
-  const provided = req.headers["x-admin-change-token"] || req.headers["x-owner-token"] || "";
-  if (String(provided) !== ADMIN_CHANGE_TOKEN) {
+  const provided = String(req.headers["x-admin-change-token"] || req.headers["x-owner-token"] || "");
+  if (!validTokens.includes(provided)) {
     sendJson(res, { ok: false, error: "Not authorized to make changes" }, 403);
     return false;
   }
