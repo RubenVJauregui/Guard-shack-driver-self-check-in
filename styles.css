@@ -517,6 +517,22 @@ button:hover {
   background: #dce8f2;
 }
 
+#preCheckedInBtn {
+  min-height: 78px;
+  padding: 18px 20px;
+  font-size: 18px;
+  border-radius: 12px;
+  background: #2f80ed;
+  border-color: #1f6fd1;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(47, 128, 237, 0.22);
+}
+
+#preCheckedInBtn:hover {
+  background: #1f8fff;
+  border-color: #0f73d8;
+}
+
 .pre-checkin-lookup {
   margin-bottom: 18px;
   padding: 14px;
