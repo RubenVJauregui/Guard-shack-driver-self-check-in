@@ -1181,7 +1181,36 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
             await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", taskBody);
             console.log(`[YMS ET] LIVE LOAD SOP task-info-checkin accepted for ${etNumber}`);
 
-            // Step 5b: Readback verification with retries
+            // Step 5b: If no WMS load task exists, create one automatically
+            let createdLoadTaskId = "";
+            if (isOutbound && hasLoad && !tripInfo.loadTaskId) {
+              try {
+                const wmsToken = await getWmsBearerToken();
+                if (wmsToken) {
+                  const ltResult = await createWmsLoadTask(`Bearer ${wmsToken}`, {
+                    dockId: assignedDockId,
+                    loadIds: [tripInfo.loadId],
+                    assigneeUserId: AUTO_OPERATOR_ID,
+                    entryId: etNumber,
+                    loadMode: "LIVE_LOAD",
+                    note: `Auto Live Load SOP: ET=${etNumber} pickup=${tripInfo.loadNo || tripInfo.loadId}`
+                  });
+                  if (ltResult.taskId) {
+                    createdLoadTaskId = ltResult.taskId;
+                    console.log(`[YMS ET] WMS Load Task created for ${etNumber}: ${createdLoadTaskId}`);
+                  } else {
+                    console.log(`[YMS ET] WMS Load Task creation failed for ${etNumber}: ${ltResult.error || "unknown"}`);
+                  }
+                }
+              } catch (ltErr) {
+                console.log(`[YMS ET] WMS Load Task creation error for ${etNumber}: ${ltErr.message}`);
+              }
+            } else if (tripInfo.loadTaskId) {
+              createdLoadTaskId = tripInfo.loadTaskId;
+              console.log(`[YMS ET] Using existing WMS Load Task for ${etNumber}: ${createdLoadTaskId}`);
+            }
+
+            // Step 5c: Readback verification with retries
             let verified = false;
             let verifyStatus = "";
             let verifyError = "";
@@ -1213,14 +1242,16 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
             if (verified) {
               windowCheckinCompleted = true;
               activityLoadAdded = true;
-              console.log(`[YMS ET] LIVE LOAD SOP VERIFIED for ${etNumber}: status=${verifyStatus} dock=${assignedDockId} operator=${AUTO_OPERATOR_NAME}`);
+              console.log(`[YMS ET] LIVE LOAD SOP VERIFIED for ${etNumber}: status=${verifyStatus} dock=${assignedDockId} operator=${AUTO_OPERATOR_NAME} loadTask=${createdLoadTaskId || "existing"}`);
             } else {
-              // task-info-checkin was accepted but readback doesn't confirm final state
               windowCheckinCompleted = false;
               activityLoadAdded = true;
               windowCheckinError = `LOAD vinculado pero YMS no confirmó Window Check-In (status=${verifyStatus || "unknown"}). Guard must open Window Check-In and Save and Continue.`;
               console.log(`[YMS ET] LIVE LOAD SOP PARTIAL for ${etNumber}: task-info accepted but readback not final. status=${verifyStatus} error=${verifyError}`);
             }
+
+            // Store created load task ID for response
+            if (createdLoadTaskId) tripInfo._createdLoadTaskId = createdLoadTaskId;
           } catch (err) {
             windowCheckinError = err.message || "Window task-info-checkin failed";
             activityLoadError = windowCheckinError;
@@ -1249,7 +1280,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         }
       }
 
-      const loadTaskId = tripInfo.loadTaskId || "";
+      const loadTaskId = tripInfo.loadTaskId || tripInfo._createdLoadTaskId || "";
       const orderId = tripInfo.orderId || "";
       const pickupNo = tripInfo.pickupNo || tripInfo.loadNo || "";
 
@@ -1271,7 +1302,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         containerNo: tripInfo.containerNo || "",
         oldEtsRejected,
         oldEtRejectionError: oldEtRejectionError || "",
-        loadTaskStatus: windowCheckinCompleted ? "window_checked_in" : (loadTaskId ? "existing_task" : "pending"),
+        loadTaskStatus: windowCheckinCompleted ? "window_checked_in" : (loadTaskId ? "task_created" : "pending"),
         loadTaskError: windowCheckinError || (!loadTaskId && hasLoad ? "No WMS load task exists for this load. Guard/warehouse must create and assign it." : ""),
         emailNotificationSent: false, raw: created.raw || {}
       });
