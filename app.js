@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet47";
+const APP_BUILD_VERSION = "strictet48";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -832,6 +832,31 @@ async function completeCheckin() {
     } catch {
       // Window completion is best-effort; do not block driver.
     }
+  }
+
+  // Show sync status based on ET creation response and window checkin result
+  const syncOk = Boolean(etStatus.windowCheckinCompleted);
+  const loadLinked = Boolean(etStatus.activityLoadAdded);
+  const syncWarning = (!syncOk && loadLinked) ? (etStatus.windowCheckinError || "") : "";
+
+  if (syncOk) {
+    const syncEl = document.createElement("p");
+    syncEl.className = "et-number";
+    syncEl.style.cssText = "color:#15803d;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#f0fdf4;border-radius:0.5rem;border:1px solid #bbf7d0;text-align:center;";
+    syncEl.textContent = "Check-in completado y sincronizado con WISE/YMS. / Check-in completed and synced with WISE/YMS.";
+    etNumberEl.parentElement.insertBefore(syncEl, etNumberEl.nextSibling);
+  } else if (loadLinked && syncWarning) {
+    const warnEl = document.createElement("p");
+    warnEl.className = "et-number";
+    warnEl.style.cssText = "color:#92400e;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#fffbeb;border-radius:0.5rem;border:1px solid #fde68a;text-align:center;";
+    warnEl.textContent = "LOAD vinculado, pero WMS/YMS no confirmó Window Check-In. El guardia debe abrir Window Check-In, usar Save and Continue/Add Load si falta, y refrescar WISE. / LOAD linked but Window Check-In not confirmed. Guard must open Window Check-In, use Save and Continue, and refresh WISE.";
+    etNumberEl.parentElement.insertBefore(warnEl, etNumberEl.nextSibling);
+  } else if (!syncOk && !loadLinked && etStatus.activityLoadError) {
+    const errEl = document.createElement("p");
+    errEl.className = "et-number";
+    errEl.style.cssText = "color:#b91c1c;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#fef2f2;border-radius:0.5rem;border:1px solid #fecaca;text-align:center;";
+    errEl.textContent = "El LOAD no se agregó en Activity. El guardia debe usar Add Load y Save and Continue manualmente. / LOAD was not added to Activity. Guard must use Add Load and Save and Continue manually.";
+    etNumberEl.parentElement.insertBefore(errEl, etNumberEl.nextSibling);
   }
 
   localStorage.setItem("driverCheckinDraft", JSON.stringify(data));

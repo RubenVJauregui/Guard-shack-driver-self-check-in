@@ -1179,9 +1179,48 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
 
           try {
             await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", taskBody);
-            windowCheckinCompleted = true;
-            activityLoadAdded = true;
-            console.log(`[YMS ET] LIVE LOAD SOP completed for ${etNumber} dock=${assignedDockId} operator=${AUTO_OPERATOR_NAME} loadIds=${JSON.stringify(taskBody.outboundTripInfo?.loadIds || taskBody.inboundTripInfo?.receiptIds || [])}`);
+            console.log(`[YMS ET] LIVE LOAD SOP task-info-checkin accepted for ${etNumber}`);
+
+            // Step 5b: Readback verification with retries
+            let verified = false;
+            let verifyStatus = "";
+            let verifyError = "";
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                if (attempt > 1) await new Promise((r) => setTimeout(r, 1500 * attempt));
+                const detail = await ymsGetRequest(ymsToken, `/entry-ticket/${etNumber}/window-checkin-detail`);
+                const etStatus = detail?.entryStatus || detail?.status || "";
+                const outTask = detail?.outboundTask || detail?.task || null;
+                const outLoads = detail?.outboundLoads || detail?.loads || detail?.activity?.loads || [];
+                const loadList = Array.isArray(outLoads) ? outLoads : [];
+                const hasExpectedLoad = hasLoad ? loadList.some((l) => String(l.loadId || l.id || l.loadNo || "").includes(tripInfo.loadId)) || loadList.length > 0 : true;
+                const isWindowDone = /WINDOW_CHECKED_IN|DOCK_CHECKED_IN|IN_YARD|LOADING/i.test(etStatus);
+
+                console.log(`[YMS ET] Readback attempt ${attempt} for ${etNumber}: status=${etStatus} loads=${loadList.length} hasExpectedLoad=${hasExpectedLoad} hasTask=${Boolean(outTask)} isWindowDone=${isWindowDone}`);
+
+                if (isWindowDone || (hasExpectedLoad && outTask)) {
+                  verified = true;
+                  verifyStatus = etStatus || "WINDOW_CHECKED_IN";
+                  break;
+                }
+                verifyStatus = etStatus;
+              } catch (readErr) {
+                verifyError = readErr.message || "readback failed";
+                console.log(`[YMS ET] Readback attempt ${attempt} failed for ${etNumber}: ${verifyError}`);
+              }
+            }
+
+            if (verified) {
+              windowCheckinCompleted = true;
+              activityLoadAdded = true;
+              console.log(`[YMS ET] LIVE LOAD SOP VERIFIED for ${etNumber}: status=${verifyStatus} dock=${assignedDockId} operator=${AUTO_OPERATOR_NAME}`);
+            } else {
+              // task-info-checkin was accepted but readback doesn't confirm final state
+              windowCheckinCompleted = false;
+              activityLoadAdded = true;
+              windowCheckinError = `LOAD vinculado pero YMS no confirmó Window Check-In (status=${verifyStatus || "unknown"}). Guard must open Window Check-In and Save and Continue.`;
+              console.log(`[YMS ET] LIVE LOAD SOP PARTIAL for ${etNumber}: task-info accepted but readback not final. status=${verifyStatus} error=${verifyError}`);
+            }
           } catch (err) {
             windowCheckinError = err.message || "Window task-info-checkin failed";
             activityLoadError = windowCheckinError;
