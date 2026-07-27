@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet49";
+const APP_BUILD_VERSION = "strictet50";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -843,7 +843,7 @@ async function completeCheckin() {
     const syncEl = document.createElement("p");
     syncEl.className = "et-number";
     syncEl.style.cssText = "color:#15803d;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#f0fdf4;border-radius:0.5rem;border:1px solid #bbf7d0;text-align:center;";
-    syncEl.textContent = "Check-in completado, Load Task creado/confirmado y sincronizado con WISE/YMS. / Check-in completed, Load Task created/confirmed and synced with WISE/YMS.";
+    syncEl.textContent = "Check-in completado, Load Task activado y sincronizado con WISE/YMS. / Check-in completed, Load Task activated and synced with WISE/YMS.";
     etNumberEl.parentElement.insertBefore(syncEl, etNumberEl.nextSibling);
   } else if (loadLinked && syncWarning) {
     const warnEl = document.createElement("p");
