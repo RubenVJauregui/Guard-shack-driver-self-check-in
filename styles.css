@@ -78,6 +78,13 @@ textarea {
   position: relative;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .language-button,
 button {
   border: 0;
@@ -94,12 +101,22 @@ button {
   line-height: 1;
 }
 
-.language-button {
+.language-button,
+.refresh-button {
   padding: 10px 12px;
   border-radius: 8px;
   background: #edf3f8;
   color: var(--ink);
   font-size: 13px;
+}
+
+.refresh-button {
+  font-weight: 700;
+}
+
+.refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .language-options {

@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet52'), 'index.html must load cache-busted app.js?v=strictet52');
-assert(index.includes('styles.css?v=strictet52'), 'index.html must load cache-busted styles.css?v=strictet52');
+assert(index.includes('app.js?v=strictet53'), 'index.html must load cache-busted app.js?v=strictet53');
+assert(index.includes('styles.css?v=strictet53'), 'index.html must load cache-busted styles.css?v=strictet53');
 
 
 
@@ -120,7 +120,13 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet52";'), 'app build version must be strictet52');
+assert(app.includes('const APP_BUILD_VERSION = "strictet53";'), 'app build version must be strictet53');
+assert(index.includes('id="refreshPortalBtn"') && index.includes('type="button"'), 'portal must provide a non-submit refresh fallback button');
+assert(app.includes('window.addEventListener("keydown"') && app.includes('event.ctrlKey') && app.includes('event.shiftKey'), 'portal must listen for Ctrl + Shift keyboard shortcuts');
+assert(app.includes('String(event.key || "").toLowerCase() === "s"'), 'portal refresh shortcut must use Ctrl + Shift + S');
+assert(app.includes('event.preventDefault();') && app.includes('event.stopImmediatePropagation();'), 'portal refresh shortcut must prevent browser save and form handlers');
+assert(app.includes('refreshUrl.searchParams.set("refresh"') && app.includes('window.location.replace(refreshUrl.toString());'), 'portal refresh must use a cache-busting navigation');
+assert(app.includes('refreshPortalBtn?.addEventListener("click", forceRefreshPortal);'), 'refresh fallback button must use the same safe refresh flow');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 40"'), 'Excel Dock 40 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');

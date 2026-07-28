@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet52";
+const APP_BUILD_VERSION = "strictet53";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -98,6 +98,7 @@ const nextBtn = document.querySelector("#nextBtn");
 const backBtn = document.querySelector("#backBtn");
 const saveDraftBtn = document.querySelector("#saveDraftBtn");
 const startOverBtn = document.querySelector("#startOverBtn");
+const refreshPortalBtn = document.querySelector("#refreshPortalBtn");
 const languageBtn = document.querySelector("#languageBtn");
 const languageOptions = document.querySelector("#languageOptions");
 const title = document.querySelector("#screenTitle");
@@ -111,6 +112,34 @@ const identityQrLink = document.querySelector("#identityQrLink");
 const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
 let currentScreen = 0;
+let portalRefreshInProgress = false;
+
+function forceRefreshPortal() {
+  if (portalRefreshInProgress) return;
+  portalRefreshInProgress = true;
+  if (refreshPortalBtn) {
+    refreshPortalBtn.disabled = true;
+    refreshPortalBtn.textContent = "Refreshing...";
+  }
+  const refreshUrl = new URL(window.location.href);
+  refreshUrl.searchParams.set("refresh", `${APP_BUILD_VERSION}-${Date.now()}`);
+  window.location.replace(refreshUrl.toString());
+}
+
+window.addEventListener("keydown", (event) => {
+  const isPortalRefresh = event.ctrlKey
+    && event.shiftKey
+    && !event.altKey
+    && !event.metaKey
+    && String(event.key || "").toLowerCase() === "s";
+  if (!isPortalRefresh) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (event.repeat) return;
+  forceRefreshPortal();
+}, true);
+
+refreshPortalBtn?.addEventListener("click", forceRefreshPortal);
 
 const allCustomers = [...new Set([...doorBetween165_166Customers, ...door144Customers, ...door45Customers, ...door70Customers])].sort((a, b) => a.localeCompare(b));
 if (customerList) {
