@@ -71,7 +71,17 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet54";
+const APP_BUILD_VERSION = "strictet55";
+const CHECKIN_VALIDATION_STEPS = Object.freeze([
+  { key: "etCreated", label: { es: "ET creado", en: "ET created" } },
+  { key: "dnLinked", label: { es: "DN vinculado", en: "DN linked" } },
+  { key: "loadLinked", label: { es: "LOAD vinculado", en: "LOAD linked" } },
+  { key: "validDock", label: { es: "Dock válido", en: "Valid dock" } },
+  { key: "loadTaskCreated", label: { es: "Load Task creado", en: "Load Task created" } },
+  { key: "windowCheckinCompleted", label: { es: "Window Check-In terminado", en: "Window Check-In completed" } },
+  { key: "qrCreated", label: { es: "QR creado", en: "QR created" } },
+  { key: "wiseSynced", label: { es: "WISE sincronizado", en: "WISE synced" } }
+]);
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -111,6 +121,9 @@ const identityQr = document.querySelector("#identityQr");
 const identityQrLink = document.querySelector("#identityQrLink");
 const etNumberEl = document.querySelector("#etNumber");
 const rnNumberEl = document.querySelector("#rnNumber");
+const validationPanel = document.querySelector("#validationPanel");
+const validationSummary = document.querySelector("#validationSummary");
+const validationChecklist = document.querySelector("#validationChecklist");
 let currentScreen = 0;
 let portalRefreshInProgress = false;
 
@@ -357,6 +370,7 @@ saveDraftBtn.addEventListener("click", () => {
 
 startOverBtn.addEventListener("click", () => {
   localStorage.removeItem("driverCheckinDraft");
+  resetCheckinValidation();
   form.reset();
   document.querySelectorAll(".preview-grid").forEach((grid) => (grid.innerHTML = ""));
   showScreen(0);
@@ -410,6 +424,7 @@ if (preCheckinSearchBtn) {
       const data = await res.json();
 
       if (data.found && data.customer) {
+        resetCheckinValidation();
         setYardInstructionMode(false);
         const doorResult = await getDoorAssignmentWithStaging(data.loadId || "", data.customer);
         doorInstruction.textContent = doorResult.assignment;
@@ -453,6 +468,7 @@ function setCompleteHeader(mode = "complete") {
 }
 
 function showImmediateTaskInstructionScreen(message) {
+  resetCheckinValidation();
   setYardInstructionMode(true);
   doorInstruction.textContent = message;
   identityQr.style.display = "none";
@@ -467,6 +483,7 @@ function showImmediateTaskInstructionScreen(message) {
 }
 
 function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166) {
+  resetCheckinValidation();
   setYardInstructionMode(true);
   doorInstruction.textContent = message;
   identityQr.style.display = "none";
@@ -483,7 +500,7 @@ function showLargeInstructionScreen(message, details = DRIVER_INSTRUCTIONS.FALLB
 function showScreen(index) {
   clearActionError();
   if (index !== 6) setYardInstructionMode(false);
-  if (index === 6) setCompleteHeader("complete");
+  if (index === 6 && validationPanel?.hidden !== false) setCompleteHeader("complete");
   currentScreen = index;
   screens.forEach((screen, screenIndex) => screen.classList.toggle("active", screenIndex === index));
   dots.forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex <= Math.min(index, 4)));
@@ -621,6 +638,7 @@ function buildReview() {
 
 
 async function completeCheckin() {
+  resetCheckinValidation();
   const data = getFormData();
   const identifiers = getLoadIdentifiers(data);
   const rnValue = identifiers[0] || "";
@@ -638,6 +656,11 @@ async function completeCheckin() {
   // Resolve customer from RN/load lookup (WMS primary, local fallback)
   const wmsResult = await resolveCustomerFromIdentifiers(identifiers);
   const resolvedCustomer = wmsResult.customer || data.customer || "";
+  const orderIds = [...new Set([
+    ...(Array.isArray(wmsResult.orderIds) ? wmsResult.orderIds : []),
+    wmsResult.orderId
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const orderId = orderIds[0] || "";
 
   // Create and confirm the YMS ET before computing or showing any door/dock assignment.
   if (!etNumber) {
@@ -651,6 +674,8 @@ async function completeCheckin() {
           idempotencyKey: duplicateEtSignature,
           entryTask: data.entryTask || "",
           entryTaskTag: data.entryTask || "",
+          orderId,
+          orderIds,
           driverInfo: {
             driverPhone: data.driverPhone || data.phone || "",
             firstName: data.firstName || "",
@@ -676,6 +701,8 @@ async function completeCheckin() {
             entryTaskTag: data.entryTask || "",
             direction: wmsResult.type === "inbound" ? "inbound" : "outbound",
             customerId: wmsResult.customerId || "",
+            orderId,
+            orderIds,
             loadId: wmsResult.loadId || "",
             loadNo: wmsResult.loadNo || "",
             dockId: wmsResult.dockId || "",
@@ -727,7 +754,8 @@ async function completeCheckin() {
     savedAt: new Date().toISOString()
   };
 
-  const identityUrl = await saveIdentityRecord(identityRecord);
+  const identityResult = await saveIdentityRecord(identityRecord);
+  const identityUrl = identityResult.url;
 
   try {
     await fetch("/api/checkins", {
@@ -777,6 +805,8 @@ async function completeCheckin() {
     // Dashboard storage should never block driver check-in.
   }
 
+  let qrRendered = false;
+
   // Drop Off Empty: show ET, drop-off message, hide QR
   if (isDropOffEmpty()) {
     setYardInstructionMode(true);
@@ -795,7 +825,7 @@ async function completeCheckin() {
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
     if (qrHelp) qrHelp.style.display = "";
-    setIdentityQr(identityUrl);
+    qrRendered = setIdentityQr(identityUrl);
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
@@ -806,7 +836,7 @@ async function completeCheckin() {
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
     if (qrHelp) qrHelp.style.display = "";
-    setIdentityQr(identityUrl);
+    qrRendered = setIdentityQr(identityUrl);
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your pickup has been recorded.`;
@@ -817,7 +847,7 @@ async function completeCheckin() {
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
     if (qrHelp) qrHelp.style.display = "";
-    setIdentityQr(identityUrl);
+    qrRendered = setIdentityQr(identityUrl);
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your ${data.entryTask || "check-in"} has been recorded.`;
@@ -834,6 +864,8 @@ async function completeCheckin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           etNumber,
+          orderId,
+          orderIds,
           loadId: wmsResult.loadId || "",
           loadNo: wmsResult.loadNo || "",
           customerId: wmsResult.customerId || "",
@@ -841,7 +873,8 @@ async function completeCheckin() {
           receiptId: wmsResult.receiptId || "",
           poNo: wmsResult.poNo || "",
           referenceNo: wmsResult.referenceNo || data.referenceNo || "",
-          dockId: doorResult.stagedLocation || "",
+          dockId: etStatus.assignedDockId || wmsResult.dockId || doorResult.stagedLocation || "",
+          loadTaskId: etStatus.loadTaskId || "",
           assigneeUserId: "",
           assigneeUserName: "",
           driverInfo: {
@@ -858,38 +891,18 @@ async function completeCheckin() {
         signal: controller.signal
       });
       clearTimeout(timeout);
-      if (wcRes.ok) {
-        windowCheckinResult = await wcRes.json().catch(() => null);
-      }
+      windowCheckinResult = await wcRes.json().catch(() => null);
     } catch {
       // Window completion is best-effort; do not block driver.
     }
   }
 
-  // Show sync status based on ET creation response and window checkin result
-  const syncOk = Boolean(etStatus.windowCheckinCompleted);
-  const loadLinked = Boolean(etStatus.activityLoadAdded);
-  const syncWarning = !syncOk ? String(etStatus.windowCheckinError || "").trim() : "";
-
-  if (syncOk) {
-    const syncEl = document.createElement("p");
-    syncEl.className = "et-number";
-    syncEl.style.cssText = "color:#15803d;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#f0fdf4;border-radius:0.5rem;border:1px solid #bbf7d0;text-align:center;";
-    syncEl.textContent = "Check-in completado, Load Task activado y sincronizado con WISE/YMS. / Check-in completed, Load Task activated and synced with WISE/YMS.";
-    etNumberEl.parentElement.insertBefore(syncEl, etNumberEl.nextSibling);
-  } else if (syncWarning) {
-    const warnEl = document.createElement("p");
-    warnEl.className = "et-number";
-    warnEl.style.cssText = "color:#92400e;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#fffbeb;border-radius:0.5rem;border:1px solid #fde68a;text-align:center;";
-    warnEl.textContent = "LOAD vinculado, pero WMS/YMS no confirmó Window Check-In. El guardia debe abrir Window Check-In, usar Save and Continue/Add Load si falta, y refrescar WISE. / LOAD linked but Window Check-In not confirmed. Guard must open Window Check-In, use Save and Continue, and refresh WISE.";
-    etNumberEl.parentElement.insertBefore(warnEl, etNumberEl.nextSibling);
-  } else if (!syncOk && !loadLinked && etStatus.activityLoadError) {
-    const errEl = document.createElement("p");
-    errEl.className = "et-number";
-    errEl.style.cssText = "color:#b91c1c;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#fef2f2;border-radius:0.5rem;border:1px solid #fecaca;text-align:center;";
-    errEl.textContent = "El LOAD no se agregó en Activity. El guardia debe usar Add Load y Save and Continue manualmente. / LOAD was not added to Activity. Guard must use Add Load and Save and Continue manually.";
-    etNumberEl.parentElement.insertBefore(errEl, etNumberEl.nextSibling);
-  }
+  const qrCreated = Boolean(identityResult.saved && identityUrl && qrRendered);
+  const validation = mergeCheckinValidation(etStatus.validation, windowCheckinResult?.validation, {
+    qrCreated,
+    identityUrl
+  });
+  renderCheckinValidation(validation);
 
   localStorage.setItem("driverCheckinDraft", JSON.stringify(data));
   localStorage.setItem("driverIdentityData", JSON.stringify(identityRecord));
@@ -941,7 +954,9 @@ async function resolveCustomerFromRn(rnValue) {
           customerId: data.customerId || "",
           loadId: data.loadId || "",
           loadNo: data.loadNo || "",
-          customerCode: data.customerCode || ""
+          customerCode: data.customerCode || "",
+          orderId: data.orderId || "",
+          orderIds: Array.isArray(data.orderIds) ? data.orderIds : []
         };
       }
     }
@@ -996,11 +1011,12 @@ function loadImageElement(src) {
 }
 
 function setIdentityQr(identityUrl) {
-  if (!identityQr || !identityQrLink) return;
-  const safeUrl = identityUrl || `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, "")}identity.html`;
+  if (!identityQr || !identityQrLink || !identityUrl) return false;
+  const safeUrl = identityUrl;
   identityQr.src = `/api/qr?data=${encodeURIComponent(safeUrl)}&v=${encodeURIComponent(APP_BUILD_VERSION)}`;
   identityQrLink.href = safeUrl;
   identityQr.alt = "Driver identity QR code";
+  return Boolean(identityQr.src && identityQrLink.href);
 }
 
 async function saveIdentityRecord(identityRecord) {
@@ -1017,11 +1033,99 @@ async function saveIdentityRecord(identityRecord) {
     clearTimeout(timeout);
     if (!response.ok) throw new Error("Identity save failed");
     const saved = await response.json();
-    return saved.url || `${fallbackUrl}?id=${encodeURIComponent(saved.id)}`;
+    return {
+      url: saved.url || `${fallbackUrl}?id=${encodeURIComponent(saved.id)}`,
+      saved: saved.saved === true
+    };
   } catch {
     clearTimeout(timeout);
-    return fallbackUrl;
+    return { url: fallbackUrl, saved: false };
   }
+}
+
+function resetCheckinValidation() {
+  if (validationPanel) validationPanel.hidden = true;
+  if (validationSummary) validationSummary.textContent = "";
+  if (validationChecklist) validationChecklist.innerHTML = "";
+  completeScreen?.classList.remove("validation-incomplete");
+  validationPanel?.classList.remove("validation-panel--success", "validation-panel--warning", "validation-panel--danger");
+}
+
+function mergeCheckinValidation(...sources) {
+  const qrResult = sources.pop() || {};
+  const stepMap = new Map(CHECKIN_VALIDATION_STEPS.map((definition) => [definition.key, {
+    ...definition,
+    passed: false,
+    details: `Pendiente: ${definition.label.es}.`,
+    evidence: {}
+  }]));
+
+  for (const validation of sources) {
+    if (!validation || !Array.isArray(validation.steps)) continue;
+    validation.steps.forEach((step) => {
+      if (!stepMap.has(step.key)) return;
+      const current = stepMap.get(step.key);
+      stepMap.set(step.key, {
+        ...current,
+        ...step,
+        label: { ...current.label, ...(step.label || {}) },
+        evidence: { ...(current.evidence || {}), ...(step.evidence || {}) }
+      });
+    });
+  }
+
+  const qrStep = stepMap.get("qrCreated");
+  stepMap.set("qrCreated", {
+    ...qrStep,
+    passed: qrResult.qrCreated === true,
+    details: qrResult.qrCreated
+      ? "Identidad guardada y QR preparado."
+      : "No se pudo confirmar el guardado de identidad y la creación del QR.",
+    evidence: { ...(qrStep.evidence || {}), identityUrl: qrResult.qrCreated ? qrResult.identityUrl || "" : "" }
+  });
+
+  const steps = CHECKIN_VALIDATION_STEPS.map(({ key }) => stepMap.get(key));
+  return {
+    passed: steps.every((step) => step.passed === true),
+    steps,
+    evidence: Object.assign({}, ...sources.map((validation) => validation?.evidence || {}), {
+      identityUrl: qrResult.qrCreated ? qrResult.identityUrl || "" : ""
+    })
+  };
+}
+
+function renderCheckinValidation(validation) {
+  if (!validationPanel || !validationSummary || !validationChecklist) return;
+  const steps = Array.isArray(validation?.steps) ? validation.steps : [];
+  const failedSteps = steps.filter((step) => step.passed !== true);
+  const etCreated = steps.find((step) => step.key === "etCreated")?.passed === true;
+  const qrCreated = steps.find((step) => step.key === "qrCreated")?.passed === true;
+  const passed = validation?.passed === true && failedSteps.length === 0;
+
+  validationPanel.hidden = false;
+  validationPanel.classList.toggle("validation-panel--success", passed);
+  validationPanel.classList.toggle("validation-panel--warning", !passed && etCreated && qrCreated);
+  validationPanel.classList.toggle("validation-panel--danger", !passed && (!etCreated || !qrCreated));
+  validationChecklist.innerHTML = steps.map((step) => {
+    const label = step.label?.es || step.label?.en || step.key;
+    const status = step.passed === true ? "✅" : "❌";
+    return `<li class="${step.passed === true ? "passed" : "failed"}" title="${escapeHtml(step.details || "")}"><span aria-hidden="true">${status}</span><span>${escapeHtml(label)}</span></li>`;
+  }).join("");
+
+  if (passed) {
+    validationSummary.textContent = "Check-in completado y validado: ET, DN, LOAD, Dock, Load Task, Window Check-In, QR y WISE sincronizados.";
+    if (completeEyebrow) completeEyebrow.textContent = "Check-in validado";
+    if (completeHeading) completeHeading.textContent = "Check in complete";
+    if (completeSuccessMark) completeSuccessMark.textContent = "✓";
+    completeScreen?.classList.remove("validation-incomplete");
+    return;
+  }
+
+  validationSummary.textContent = `Check-in pendiente de validación: ${failedSteps.length} paso${failedSteps.length === 1 ? "" : "s"} requiere${failedSteps.length === 1 ? "" : "n"} atención. Muestre esta pantalla al personal del almacén.`;
+  if (completeEyebrow) completeEyebrow.textContent = "Validación pendiente";
+  if (completeHeading) completeHeading.textContent = "Check-in requires review";
+  if (completeSuccessMark) completeSuccessMark.textContent = "!";
+  completeScreen?.classList.add("validation-incomplete");
 }
 
 

@@ -7,7 +7,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Driver Check-In — Valley View</title>
-    <link rel="stylesheet" href="./styles.css?v=strictet54" />
+    <link rel="stylesheet" href="./styles.css?v=strictet55" />
   </head>
   <body>
     <main id="app" class="shell">
@@ -215,6 +215,11 @@
             <p id="etNumber" class="et-number"></p>
             <p id="rnNumber" class="et-number"></p>
             <p id="completionDetails" class="muted"></p>
+            <section id="validationPanel" class="validation-panel" aria-live="polite" hidden>
+              <p class="validation-title">Validación del check-in</p>
+              <p id="validationSummary" class="validation-summary"></p>
+              <ul id="validationChecklist" class="validation-checklist"></ul>
+            </section>
             <button class="secondary" type="button" id="startOverBtn">Start Over</button>
           </section>
         </form>
@@ -227,6 +232,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=strictet54"></script>
+    <script src="./app.js?v=strictet55"></script>
   </body>
 </html>

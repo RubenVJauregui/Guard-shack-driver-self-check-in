@@ -38,8 +38,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet54'), 'index.html must load cache-busted app.js?v=strictet54');
-assert(index.includes('styles.css?v=strictet54'), 'index.html must load cache-busted styles.css?v=strictet54');
+assert(index.includes('app.js?v=strictet55'), 'index.html must load cache-busted app.js?v=strictet55');
+assert(index.includes('styles.css?v=strictet55'), 'index.html must load cache-busted styles.css?v=strictet55');
 
 
 
@@ -121,7 +121,7 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet54";'), 'app build version must be strictet54');
+assert(app.includes('const APP_BUILD_VERSION = "strictet55";'), 'app build version must be strictet55');
 assert(index.includes('id="refreshPortalBtn"') && index.includes('type="button"'), 'portal must provide a non-submit refresh fallback button');
 assert(app.includes('window.addEventListener("keydown"') && app.includes('event.ctrlKey') && app.includes('event.shiftKey'), 'portal must listen for Ctrl + Shift keyboard shortcuts');
 assert(app.includes('String(event.key || "").toLowerCase() === "s"'), 'portal refresh shortcut must use Ctrl + Shift + S');
@@ -202,7 +202,27 @@ const entryTaskTagFirstUse = server.indexOf('entryTaskTag || ""', ymsEntryTicket
 assert(server.includes('function asObject(value)') && server.includes('function firstNonEmptyString(...values)'), 'server must provide defensive optional payload normalizers');
 assert(entryTaskTagDefinition > ymsEntryTicketRoute && entryTaskTagDefinition < entryTaskTagFirstUse, 'server must define entryTaskTag before strict ET mode selection uses it');
 assert(server.includes('payload.entryTask') && server.includes('payload.entryTaskTag') && server.includes('payload.loadTypeGroup') && server.includes('tripInfo.entryTask') && server.includes('tripInfo.entryTaskTag'), 'entryTaskTag must use available payload and trip task context');
-assert(compactApp.includes('const syncWarning = !syncOk ? String(etStatus.windowCheckinError || "").trim() : "";') && compactApp.includes('} else if (syncWarning) {'), 'ET/QR completion must show YMS task warnings without blocking successful ET creation');
+// strictet55 centralized Validation Engine lock.
+const validationKeys = ['etCreated', 'dnLinked', 'loadLinked', 'validDock', 'loadTaskCreated', 'windowCheckinCompleted', 'qrCreated', 'wiseSynced'];
+assert(server.includes('const CHECKIN_VALIDATION_LABELS = Object.freeze({'), 'server must define centralized bilingual validation labels');
+assert(server.includes('function buildCheckinValidation(context = {})'), 'server must expose the centralized Validation Engine helper');
+assert(server.includes('function logCheckinValidation(source, etNumber, validation)'), 'server must log a safe validation summary per ET');
+for (const key of validationKeys) {
+  assert(server.includes(`${key}:`) && app.includes(`key: "${key}"`), `Validation Engine must include ${key} on server and client`);
+}
+assert(server.includes('label: CHECKIN_VALIDATION_LABELS[key]') && server.includes('passed: steps.every((step) => step.passed)'), 'server validation steps must include bilingual labels and aggregate passed state');
+assert(server.includes('validation,') && server.includes('wiseSynced: validationWiseSynced && windowCheckinCompleted'), 'ET endpoint must return validation and strict WISE readback state');
+assert(server.includes('respondWithValidation') && server.includes('windowCheckinCompleted: Boolean(context.windowCheckinCompleted)'), 'Window Check-In endpoint must use the shared validation response');
+assert(compactApp.includes('orderId, orderIds,') && compactApp.includes('loadTaskId: etStatus.loadTaskId || ""'), 'client must send DN and Load Task context to final validation');
+assert(app.includes('const qrCreated = Boolean(identityResult.saved && identityUrl && qrRendered);'), 'client must confirm identity save and rendered QR before passing qrCreated');
+assert(app.includes('function mergeCheckinValidation(...sources)') && app.includes('function renderCheckinValidation(validation)'), 'client must merge server validation with frontend QR evidence and render it');
+assert(index.includes('id="validationPanel"') && index.includes('id="validationChecklist"'), 'final screen must show the compact validation checklist');
+assert(app.includes('validation?.passed === true') && app.includes('if (passed) {'), 'green completion must be gated by validation.passed');
+const validatedSuccessIndex = app.indexOf('Check-in completado y validado: ET, DN, LOAD, Dock, Load Task, Window Check-In, QR y WISE sincronizados.');
+const passedBranchIndex = app.lastIndexOf('if (passed) {', validatedSuccessIndex);
+assert(passedBranchIndex >= 0 && passedBranchIndex < validatedSuccessIndex, 'green success copy must only appear inside the validation passed branch');
+assert(app.includes('Check-in completado y validado: ET, DN, LOAD, Dock, Load Task, Window Check-In, QR y WISE sincronizados.'), 'validated success copy must list all eight checks');
+assert(!app.includes('const syncOk = Boolean(etStatus.windowCheckinCompleted);'), 'legacy optimistic green success must not remain');
 
 // DB Valley View classification lock.
 assert(db.includes("facility_id TEXT DEFAULT 'LT_F1'") && db.includes("facility_name TEXT DEFAULT 'Valley View'"), 'DB defaults must be LT_F1 / Valley View');
@@ -240,4 +260,4 @@ assert(!read('staging-door-config.js').includes('Fontana'), 'staging config must
 assert(!read('staging-door-config.js').includes('SharkNinja'), 'staging config must not contain stale SharkNinja comments');
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: strict Valley View ET and assistance behavior is locked.');
+console.log('Regression guard passed: strictet55 Valley View validation behavior is locked.');

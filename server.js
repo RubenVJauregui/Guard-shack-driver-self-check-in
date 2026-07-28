@@ -93,6 +93,105 @@ function firstNonEmptyString(...values) {
   return "";
 }
 
+const CHECKIN_VALIDATION_LABELS = Object.freeze({
+  etCreated: { es: "ET creado", en: "ET created" },
+  dnLinked: { es: "DN vinculado", en: "DN linked" },
+  loadLinked: { es: "LOAD vinculado", en: "LOAD linked" },
+  validDock: { es: "Dock válido", en: "Valid dock" },
+  loadTaskCreated: { es: "Load Task creado", en: "Load Task created" },
+  windowCheckinCompleted: { es: "Window Check-In terminado", en: "Window Check-In completed" },
+  qrCreated: { es: "QR creado", en: "QR created" },
+  wiseSynced: { es: "WISE sincronizado", en: "WISE synced" }
+});
+
+function validationIds(...values) {
+  const ids = [];
+  for (const value of values) {
+    if (Array.isArray(value)) ids.push(...value);
+    else if (value !== undefined && value !== null) ids.push(value);
+  }
+  return [...new Set(ids.map((value) => firstNonEmptyString(value)).filter(Boolean))];
+}
+
+function buildCheckinValidation(context = {}) {
+  const etNumber = firstNonEmptyString(context.etNumber);
+  const orderIds = validationIds(context.orderIds, context.orderId, context.dnId);
+  const loadId = firstNonEmptyString(context.loadId);
+  const dockId = numericDockId(context.dockId);
+  const loadTaskId = firstNonEmptyString(context.loadTaskId);
+  const entryStatus = firstNonEmptyString(context.entryStatus);
+  const identityUrl = firstNonEmptyString(context.identityUrl);
+  const syncStatus = firstNonEmptyString(context.syncStatus, context.wiseSynced ? "CONFIRMED" : "NOT_CONFIRMED");
+  const facts = {
+    etCreated: Boolean(etNumber && context.etCreated !== false),
+    dnLinked: Boolean(orderIds.length && context.dnLinked),
+    loadLinked: Boolean(loadId && context.loadLinked),
+    validDock: Boolean(dockId),
+    loadTaskCreated: Boolean(loadTaskId && context.loadTaskCreated !== false),
+    windowCheckinCompleted: Boolean(context.windowCheckinCompleted),
+    qrCreated: Boolean(context.qrCreated && identityUrl),
+    wiseSynced: Boolean(context.wiseSynced)
+  };
+  const details = {
+    etCreated: facts.etCreated ? `ET ${etNumber} confirmado.` : "El ET no fue confirmado.",
+    dnLinked: facts.dnLinked ? `DN/orden confirmada: ${orderIds.join(", ")}.` : "No se confirmó una DN/orden vinculada.",
+    loadLinked: facts.loadLinked ? `LOAD ${loadId} confirmado en el readback.` : "WISE/YMS no confirmó el LOAD esperado.",
+    validDock: facts.validDock ? `Dock/location ID ${dockId} verificado.` : "No se confirmó un dock/location ID numérico válido.",
+    loadTaskCreated: facts.loadTaskCreated ? `Load Task ${loadTaskId} confirmado.` : "No se confirmó la creación o reutilización del Load Task.",
+    windowCheckinCompleted: facts.windowCheckinCompleted ? `Window Check-In confirmado${entryStatus ? ` con estado ${entryStatus}` : ""}.` : "Window Check-In todavía no fue confirmado por readback.",
+    qrCreated: facts.qrCreated ? "Identidad guardada y QR preparado." : "El QR todavía no fue confirmado por el portal.",
+    wiseSynced: facts.wiseSynced ? "WISE/YMS confirmó la sincronización final." : "La sincronización final con WISE/YMS no fue confirmada."
+  };
+  const evidenceByKey = {
+    etCreated: { etNumber },
+    dnLinked: { orderIds },
+    loadLinked: { loadId },
+    validDock: { dockId },
+    loadTaskCreated: { loadTaskId },
+    windowCheckinCompleted: { etNumber, entryStatus },
+    qrCreated: { identityUrl },
+    wiseSynced: { etNumber, loadId, loadTaskId, entryStatus, syncStatus }
+  };
+  const steps = Object.keys(CHECKIN_VALIDATION_LABELS).map((key) => ({
+    key,
+    label: CHECKIN_VALIDATION_LABELS[key],
+    passed: facts[key],
+    details: details[key],
+    evidence: evidenceByKey[key]
+  }));
+  return {
+    passed: steps.every((step) => step.passed),
+    steps,
+    evidence: { etNumber, orderIds, loadId, dockId, loadTaskId, entryStatus, identityUrl, syncStatus },
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function logCheckinValidation(source, etNumber, validation) {
+  const summary = validation.steps.map((step) => `${step.key}=${step.passed ? "PASS" : "FAIL"}`).join(" ");
+  console.log(`[Validation Engine] source=${source} et=${etNumber || "none"} passed=${validation.passed} ${summary}`);
+}
+
+function extractYmsReadback(detail, expectedLoadId) {
+  const value = asObject(detail?.data || detail);
+  const outboundTask = value.outboundTask || value.task || null;
+  const rawLoads = value.outboundLoads || value.loads || value.activity?.loads || [];
+  const loads = Array.isArray(rawLoads) ? rawLoads : [];
+  const expected = firstNonEmptyString(expectedLoadId);
+  const loadLinked = Boolean(expected && loads.some((load) => validationIds(load?.loadId, load?.id, load?.loadNo).includes(expected)));
+  const entryStatus = firstNonEmptyString(value.entryStatus, value.status);
+  const windowCheckinCompleted = /WINDOW_CHECKED_IN|DOCK_CHECKED_IN|IN_YARD|LOADING/i.test(entryStatus);
+  return {
+    entryStatus,
+    loadLinked,
+    taskPresent: Boolean(outboundTask),
+    dockId: firstNonEmptyString(outboundTask?.assignLocationId, outboundTask?.dockId, value.dockId, value.locationId),
+    loadTaskId: firstNonEmptyString(value.loadTaskId, outboundTask?.taskId),
+    windowCheckinCompleted,
+    wiseSynced: Boolean(windowCheckinCompleted && loadLinked && outboundTask)
+  };
+}
+
 function formatNotificationLines(etNumber, payload) {
   const driver = payload.driverInfo || {};
   const carrier = payload.carrierInfo || {};
@@ -687,7 +786,7 @@ const server = http.createServer(async (req, res) => {
     const record = JSON.parse(body || "{}");
     const id = crypto.randomUUID();
     fs.writeFileSync(path.join(dataDir, `${id}.json`), JSON.stringify(record, null, 2));
-    sendJson(res, { id, url: `${getPublicOrigin(req)}/identity.html?id=${id}` });
+    sendJson(res, { id, saved: true, url: `${getPublicOrigin(req)}/identity.html?id=${id}` });
     return;
   }
 
@@ -1090,6 +1189,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
   }
 
   if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket") {
+    let entryValidationContext = {};
     try {
       const body = await readBody(req);
       const payload = asObject(JSON.parse(body || "{}"));
@@ -1102,10 +1202,19 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         tripInfo.entryTaskTag,
         tripInfo.loadTypeGroup
       );
+      entryValidationContext = {
+        orderIds: validationIds(tripInfo.orderIds, tripInfo.orderId, payload.orderIds, payload.orderId),
+        loadId: firstNonEmptyString(tripInfo.loadId),
+        dockId: firstNonEmptyString(tripInfo.dockId),
+        loadTaskId: firstNonEmptyString(tripInfo.loadTaskId),
+        qrCreated: false
+      };
 
       const ymsToken = await getYmsBearerToken();
       if (!ymsToken) {
-        sendJson(res, { ok: false, etNumber: "", error: "YMS auth unavailable" }, 503);
+        const validation = buildCheckinValidation(entryValidationContext);
+        logCheckinValidation("yms-entry-ticket-auth-unavailable", "", validation);
+        sendJson(res, { ok: false, etNumber: "", error: "YMS auth unavailable", validation }, 503);
         return;
       }
 
@@ -1113,7 +1222,13 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       if (idempotencyKey && ymsEtBySubmissionSignature.has(idempotencyKey)) {
         const cached = ymsEtBySubmissionSignature.get(idempotencyKey);
         console.log(`[YMS ET] Reusing ET ${cached.etNumber} for exact submission signature ${idempotencyKey.slice(0, 12)}`);
-        sendJson(res, { ok: true, etNumber: cached.etNumber, reused: true, raw: cached.raw || {} });
+        if (cached.response) {
+          sendJson(res, { ...cached.response, reused: true });
+          return;
+        }
+        const validation = buildCheckinValidation({ etNumber: cached.etNumber, etCreated: true, qrCreated: false });
+        logCheckinValidation("yms-entry-ticket-reuse-pending", cached.etNumber, validation);
+        sendJson(res, { ok: true, etNumber: cached.etNumber, reused: true, validation, raw: cached.raw || {} });
         return;
       }
 
@@ -1122,9 +1237,13 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       const etNumber = created.etNumber;
       if (!etNumber) {
         console.log(`[YMS ET] create returned without ET number raw=${JSON.stringify(created.raw || {}).slice(0, 2000)}`);
-        sendJson(res, { ok: false, error: "YMS did not return an ET number", raw: created.raw || {} }, 502);
+        const validation = buildCheckinValidation(entryValidationContext);
+        logCheckinValidation("yms-entry-ticket-create-missing-et", "", validation);
+        sendJson(res, { ok: false, etNumber: "", error: "YMS did not return an ET number", validation, raw: created.raw || {} }, 502);
         return;
       }
+      entryValidationContext.etNumber = etNumber;
+      entryValidationContext.etCreated = true;
       console.log(`[YMS ET] Created ET: ${etNumber}`);
       if (idempotencyKey) ymsEtBySubmissionSignature.set(idempotencyKey, { etNumber, raw: created.raw || {}, createdAt: Date.now() });
 
@@ -1171,6 +1290,10 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       let createdLoadTaskId = tripInfo.loadTaskId || "";
       let assignedDockId = "";
       let assignedDockName = tripInfo.dockName || "";
+      let validationEntryStatus = "";
+      let validationLoadLinked = false;
+      let validationTaskPresent = false;
+      let validationWiseSynced = false;
       const isOutbound = tripInfo.direction !== "inbound";
       const hasLoad = Boolean(tripInfo.loadId);
       const isPreload = /preload|pick.?up.?preload/i.test(entryTaskTag || "");
@@ -1306,21 +1429,20 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
             try {
               if (attempt > 1) await new Promise((r) => setTimeout(r, 1500 * attempt));
               const detail = await ymsGetRequest(ymsToken, `/entry-ticket/${etNumber}/window-checkin-detail`);
-              const etStatus = detail?.entryStatus || detail?.status || "";
-              const outTask = detail?.outboundTask || detail?.task || null;
-              const outLoads = detail?.outboundLoads || detail?.loads || detail?.activity?.loads || [];
-              const loadList = Array.isArray(outLoads) ? outLoads : [];
-              const hasExpectedLoad = hasLoad ? loadList.some((l) => String(l.loadId || l.id || l.loadNo || "").includes(tripInfo.loadId)) || loadList.length > 0 : true;
-              const isWindowDone = /WINDOW_CHECKED_IN|DOCK_CHECKED_IN|IN_YARD|LOADING/i.test(etStatus);
+              const readback = extractYmsReadback(detail, tripInfo.loadId);
+              validationEntryStatus = readback.entryStatus || validationEntryStatus;
+              validationLoadLinked = readback.loadLinked;
+              validationTaskPresent = readback.taskPresent;
+              validationWiseSynced = Boolean(readback.wiseSynced && createdLoadTaskId && assignedDockId);
 
-              console.log(`[YMS ET] Readback #${attempt} for ${etNumber}: status=${etStatus} loads=${loadList.length} hasLoad=${hasExpectedLoad} hasTask=${Boolean(outTask)} isDone=${isWindowDone} loadTask=${createdLoadTaskId || "none"}`);
+              console.log(`[YMS ET] Readback #${attempt} for ${etNumber}: status=${readback.entryStatus || "unknown"} hasLoad=${readback.loadLinked} hasTask=${readback.taskPresent} isDone=${readback.windowCheckinCompleted} loadTask=${createdLoadTaskId || "none"}`);
 
-              if (isWindowDone || (hasExpectedLoad && outTask && createdLoadTaskId)) {
+              if (readback.windowCheckinCompleted && readback.loadLinked && readback.taskPresent && createdLoadTaskId && assignedDockId) {
                 verified = true;
-                verifyStatus = etStatus || "WINDOW_CHECKED_IN";
+                verifyStatus = readback.entryStatus || "WINDOW_CHECKED_IN";
                 break;
               }
-              verifyStatus = etStatus;
+              verifyStatus = readback.entryStatus;
             } catch (readErr) {
               console.log(`[YMS ET] Readback #${attempt} failed: ${readErr.message}`);
             }
@@ -1369,9 +1491,26 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
 
       const loadTaskId = createdLoadTaskId || tripInfo.loadTaskId || "";
       const orderId = tripInfo.orderId || "";
+      const orderIds = validationIds(tripInfo.orderIds, orderId);
       const pickupNo = tripInfo.pickupNo || tripInfo.loadNo || "";
-
-      sendJson(res, {
+      const validation = buildCheckinValidation({
+        etNumber,
+        etCreated: true,
+        orderIds,
+        dnLinked: Boolean(tripInfoAttached && orderIds.length && validationLoadLinked),
+        loadId: tripInfo.loadId,
+        loadLinked: validationLoadLinked,
+        dockId: assignedDockId,
+        loadTaskId,
+        loadTaskCreated: Boolean(loadTaskId),
+        windowCheckinCompleted,
+        qrCreated: false,
+        wiseSynced: validationWiseSynced && windowCheckinCompleted,
+        entryStatus: validationEntryStatus,
+        syncStatus: validationWiseSynced ? "READBACK_CONFIRMED" : "READBACK_NOT_CONFIRMED"
+      });
+      logCheckinValidation("yms-entry-ticket", etNumber, validation);
+      const responsePayload = {
         ok: true, etNumber, basicInfoAttached, tripInfoAttached,
         checkinCompleted, checkinCompleteError,
         activityLoadAdded, activityLoadError: activityLoadError || "",
@@ -1384,6 +1523,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         loadNo: tripInfo.loadNo || "",
         loadTaskId: loadTaskId || "",
         orderId: orderId || "",
+        orderIds,
         pickupNo: pickupNo || "",
         receiptId: tripInfo.receiptId || "",
         containerNo: tripInfo.containerNo || "",
@@ -1391,11 +1531,24 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         oldEtRejectionError: oldEtRejectionError || "",
         loadTaskStatus: windowCheckinCompleted ? "window_checked_in" : (loadTaskId ? "task_created" : "pending"),
         loadTaskError: windowCheckinError || (!loadTaskId && hasLoad ? "No WMS load task exists for this load. Guard/warehouse must create and assign it." : ""),
+        wiseSynced: validationWiseSynced && windowCheckinCompleted,
+        validation,
         emailNotificationSent: false, raw: created.raw || {}
-      });
+      };
+      if (idempotencyKey) {
+        ymsEtBySubmissionSignature.set(idempotencyKey, { etNumber, raw: created.raw || {}, createdAt: Date.now(), response: responsePayload });
+      }
+      sendJson(res, responsePayload);
     } catch (err) {
       console.log(`[YMS ET] endpoint error: ${err.message}`);
-      sendJson(res, { ok: false, etNumber: "", error: err.message === "YMS did not return an ET number" ? "YMS did not return an ET number" : "ET creation failed" }, 502);
+      const validation = buildCheckinValidation(entryValidationContext);
+      logCheckinValidation("yms-entry-ticket-error", entryValidationContext.etNumber || "", validation);
+      sendJson(res, {
+        ok: false,
+        etNumber: entryValidationContext.etNumber || "",
+        error: err.message === "YMS did not return an ET number" ? "YMS did not return an ET number" : "ET creation failed",
+        validation
+      }, 502);
     }
     return;
   }
@@ -1403,98 +1556,175 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
   if (req.method === "POST" && url.pathname === "/api/yms-window-checkin-complete") {
     try {
       const body = await readBody(req);
-      const payload = JSON.parse(body || "{}");
-      const etNumber = payload.etNumber || "";
-      const loadId = payload.loadId || "";
-      const customerId = payload.customerId || "";
-      const dockId = payload.dockId || "";
-      const assigneeUserId = payload.assigneeUserId || "";
-      const assigneeUserName = payload.assigneeUserName || "";
+      const payload = asObject(JSON.parse(body || "{}"));
+      const etNumber = firstNonEmptyString(payload.etNumber);
+      const loadId = firstNonEmptyString(payload.loadId);
+      const orderIds = validationIds(payload.orderIds, payload.orderId);
+      const requestedDockId = firstNonEmptyString(payload.dockId);
+      const requestedLoadTaskId = firstNonEmptyString(payload.loadTaskId);
+      const customerId = firstNonEmptyString(payload.customerId);
+      const assigneeUserId = firstNonEmptyString(payload.assigneeUserId);
+      const assigneeUserName = firstNonEmptyString(payload.assigneeUserName);
 
-      if (!etNumber) { sendJson(res, { completed: false, reason: "Missing ET number" }); return; }
-      if (!loadId) { sendJson(res, { completed: false, reason: "Missing loadId — cannot safely complete window check-in without confirmed WMS load" }); return; }
+      const respondWithValidation = (context = {}, extra = {}, statusCode = 200) => {
+        const validation = buildCheckinValidation({
+          etNumber,
+          etCreated: Boolean(etNumber),
+          orderIds,
+          dnLinked: Boolean(orderIds.length && context.loadLinked),
+          loadId,
+          loadLinked: Boolean(context.loadLinked),
+          dockId: firstNonEmptyString(context.dockId, requestedDockId),
+          loadTaskId: firstNonEmptyString(context.loadTaskId, requestedLoadTaskId),
+          loadTaskCreated: Boolean(firstNonEmptyString(context.loadTaskId, requestedLoadTaskId)),
+          windowCheckinCompleted: Boolean(context.windowCheckinCompleted),
+          qrCreated: false,
+          wiseSynced: Boolean(context.wiseSynced),
+          entryStatus: context.entryStatus,
+          syncStatus: context.wiseSynced ? "READBACK_CONFIRMED" : "READBACK_NOT_CONFIRMED"
+        });
+        logCheckinValidation("yms-window-checkin-complete", etNumber, validation);
+        sendJson(res, {
+          completed: validation.steps.find((step) => step.key === "windowCheckinCompleted")?.passed === true,
+          etNumber,
+          status: firstNonEmptyString(context.entryStatus),
+          validation,
+          ...extra
+        }, statusCode);
+      };
+
+      if (!etNumber) {
+        respondWithValidation({}, { reason: "ET number is required." }, 400);
+        return;
+      }
+      if (!loadId) {
+        respondWithValidation({}, { reason: "A confirmed WMS LOAD is required." }, 400);
+        return;
+      }
 
       const ymsToken = await getYmsBearerToken();
-      if (!ymsToken) { sendJson(res, { completed: false, reason: "YMS auth unavailable" }, 503); return; }
+      if (!ymsToken) {
+        respondWithValidation({}, { reason: "YMS authentication is unavailable." }, 503);
+        return;
+      }
 
-      // Step 1: Read ET detail to verify status
       let etDetail;
       try {
-        etDetail = await ymsGetRequest(ymsToken, `/entry-ticket/${etNumber}/window-checkin-detail`);
+        etDetail = await ymsGetRequest(ymsToken, "/entry-ticket/" + encodeURIComponent(etNumber) + "/window-checkin-detail");
       } catch {
         try {
-          etDetail = await ymsGetRequest(ymsToken, `/self-check-in/${etNumber}/entry-detail`);
-        } catch (err2) {
-          sendJson(res, { completed: false, reason: `Cannot read ET detail: ${err2.message}` });
+          etDetail = await ymsGetRequest(ymsToken, "/self-check-in/" + encodeURIComponent(etNumber) + "/entry-detail");
+        } catch {
+          respondWithValidation({}, { reason: "WISE/YMS detail could not be read. Please retry." });
           return;
         }
       }
 
-      const entryStatus = etDetail?.entryStatus || etDetail?.status || etDetail?.data?.entryStatus || etDetail?.data?.status || "";
-      const createdSource = etDetail?.createdSource || etDetail?.data?.createdSource || "";
-      const existingLoadTaskId = etDetail?.loadTaskId || etDetail?.data?.loadTaskId || "";
-      console.log(`[YMS window] ET=${etNumber} status=${entryStatus} source=${createdSource} existingLoadTask=${existingLoadTaskId}`);
+      let readback = extractYmsReadback(etDetail, loadId);
+      const detailValue = asObject(etDetail?.data || etDetail);
+      const createdSource = firstNonEmptyString(detailValue.createdSource);
+      let loadTaskId = firstNonEmptyString(requestedLoadTaskId, detailValue.loadTaskId, readback.loadTaskId);
+      let dockId = firstNonEmptyString(requestedDockId, readback.dockId, detailValue.dockId, detailValue.locationId);
+      console.log(`[YMS window] ET=${etNumber} status=${readback.entryStatus || "unknown"} source=${createdSource || "unknown"} loadTask=${loadTaskId || "none"} dock=${dockId || "none"}`);
 
+      const readbackContext = () => ({
+        ...readback,
+        dockId,
+        loadTaskId,
+        wiseSynced: Boolean(readback.wiseSynced && numericDockId(dockId) && loadTaskId)
+      });
+
+      if (readback.windowCheckinCompleted || loadTaskId) {
+        respondWithValidation(readbackContext(), {
+          reason: readback.windowCheckinCompleted
+            ? "Window Check-In readback completed."
+            : "Load Task exists, but final Window Check-In readback is still pending."
+        });
+        return;
+      }
       if (createdSource && createdSource !== "SELF_CHECKIN") {
-        sendJson(res, { completed: false, reason: `ET source is ${createdSource}, not SELF_CHECKIN` }); return;
+        respondWithValidation(readbackContext(), { reason: "This ET is not eligible for self-service Window Check-In." });
+        return;
       }
-      if (entryStatus && entryStatus !== "NEED_WINDOW_CHECK_IN" && entryStatus !== "NEW") {
-        sendJson(res, { completed: false, reason: `ET status is ${entryStatus}, not eligible for window completion` }); return;
+      if (readback.entryStatus && readback.entryStatus !== "NEED_WINDOW_CHECK_IN" && readback.entryStatus !== "NEW") {
+        respondWithValidation(readbackContext(), { reason: "This ET is not currently eligible for Window Check-In." });
+        return;
       }
-      if (existingLoadTaskId) {
-        sendJson(res, { completed: false, reason: "ET already has a load task — window check-in may already be done" }); return;
+      if (!numericDockId(dockId)) {
+        respondWithValidation(readbackContext(), { reason: "A verified numeric dock/location ID is required." });
+        return;
       }
 
-      // Step 2: Refresh basic info (already attached during creation, but refresh ensures consistency)
       if (payload.driverInfo || payload.vehicleInfo) {
         try {
           await attachBasicInfo(ymsToken, etNumber, payload);
           console.log(`[YMS window] Basic info refreshed for ${etNumber}`);
         } catch (err) {
-          console.log(`[YMS window] Basic info refresh failed (non-blocking): ${err.message}`);
+          console.log(`[YMS window] Basic info refresh failed for ${etNumber}: ${err.message}`);
         }
       }
 
-      // Step 3: Refresh trip info
-      if (loadId || customerId) {
-        try {
-          await attachTripInfo(ymsToken, etNumber, {
-            direction: payload.direction || "outbound",
-            customerId,
-            loadId,
-            loadNo: payload.loadNo || "",
-            receiptId: payload.receiptId || "",
-            poNo: payload.poNo || "",
-            referenceNo: payload.referenceNo || ""
-          });
-          console.log(`[YMS window] Trip info refreshed for ${etNumber}`);
-        } catch (err) {
-          console.log(`[YMS window] Trip info refresh failed (non-blocking): ${err.message}`);
-        }
+      try {
+        await attachTripInfo(ymsToken, etNumber, {
+          direction: payload.direction || "outbound",
+          customerId,
+          loadId,
+          loadNo: payload.loadNo || "",
+          receiptId: payload.receiptId || "",
+          poNo: payload.poNo || "",
+          referenceNo: payload.referenceNo || ""
+        });
+        console.log(`[YMS window] Trip info refreshed for ${etNumber}`);
+      } catch (err) {
+        console.log(`[YMS window] Trip info refresh failed for ${etNumber}: ${err.message}`);
       }
 
-      // Step 4: Complete window check-in via task-entry-checkin
       const taskBody = {
         entryId: etNumber,
+        outboundTripInfo: { customerId, loadIds: [loadId] },
         outboundTask: {
-          assignLocationId: dockId || "",
-          assigneeUserId: assigneeUserId || "",
-          assigneeUserName: assigneeUserName || "",
+          assignLocationId: numericDockId(dockId),
+          assigneeUserId,
+          assigneeUserName,
           description: `Self-check-in window completion for load ${loadId}`
         }
       };
 
       try {
-        const taskResult = await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", taskBody);
-        console.log(`[YMS window] task-info-checkin completed for ${etNumber}`);
-        sendJson(res, { completed: true, etNumber, status: "WINDOW_CHECKED_IN", taskResult: taskResult || {} });
+        await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", taskBody);
+        console.log(`[YMS window] task-info-checkin accepted for ${etNumber}; verifying readback`);
       } catch (err) {
         console.log(`[YMS window] task-info-checkin failed for ${etNumber}: ${err.message}`);
-        sendJson(res, { completed: false, reason: `Window task completion failed: ${err.message}`, etNumber });
+        respondWithValidation(readbackContext(), { reason: "Window Check-In was not accepted. Guard review is required." });
+        return;
       }
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+          const detail = await ymsGetRequest(ymsToken, "/entry-ticket/" + encodeURIComponent(etNumber) + "/window-checkin-detail");
+          readback = extractYmsReadback(detail, loadId);
+          const value = asObject(detail?.data || detail);
+          loadTaskId = firstNonEmptyString(loadTaskId, value.loadTaskId, readback.loadTaskId);
+          dockId = firstNonEmptyString(dockId, readback.dockId, value.dockId, value.locationId);
+          console.log(`[YMS window] Readback #${attempt} ET=${etNumber} status=${readback.entryStatus || "unknown"} load=${readback.loadLinked} task=${readback.taskPresent} window=${readback.windowCheckinCompleted}`);
+          if (readback.windowCheckinCompleted && readback.loadLinked && readback.taskPresent) break;
+        } catch (err) {
+          console.log(`[YMS window] Readback #${attempt} failed for ${etNumber}: ${err.message}`);
+        }
+      }
+
+      const context = readbackContext();
+      respondWithValidation(context, {
+        reason: context.wiseSynced
+          ? "Window Check-In and WISE/YMS synchronization confirmed."
+          : "Window Check-In is still awaiting final WISE/YMS readback."
+      });
     } catch (err) {
       console.log(`[YMS window] endpoint error: ${err.message}`);
-      sendJson(res, { completed: false, reason: "Window check-in endpoint error" });
+      const validation = buildCheckinValidation({ qrCreated: false });
+      logCheckinValidation("yms-window-checkin-error", "", validation);
+      sendJson(res, { completed: false, reason: "Window Check-In could not be validated.", validation });
     }
     return;
   }
