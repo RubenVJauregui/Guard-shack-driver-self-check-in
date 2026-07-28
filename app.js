@@ -620,6 +620,8 @@ async function completeCheckin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           idempotencyKey: duplicateEtSignature,
+          entryTask: data.entryTask || "",
+          entryTaskTag: data.entryTask || "",
           driverInfo: {
             driverPhone: data.driverPhone || data.phone || "",
             firstName: data.firstName || "",
@@ -641,6 +643,8 @@ async function completeCheckin() {
             sealNumber: ""
           },
           tripInfo: {
+            entryTask: data.entryTask || "",
+            entryTaskTag: data.entryTask || "",
             direction: wmsResult.type === "inbound" ? "inbound" : "outbound",
             customerId: wmsResult.customerId || "",
             loadId: wmsResult.loadId || "",
@@ -834,7 +838,7 @@ async function completeCheckin() {
   // Show sync status based on ET creation response and window checkin result
   const syncOk = Boolean(etStatus.windowCheckinCompleted);
   const loadLinked = Boolean(etStatus.activityLoadAdded);
-  const syncWarning = (!syncOk && loadLinked) ? (etStatus.windowCheckinError || "") : "";
+  const syncWarning = !syncOk ? String(etStatus.windowCheckinError || "").trim() : "";
 
   if (syncOk) {
     const syncEl = document.createElement("p");
@@ -842,7 +846,7 @@ async function completeCheckin() {
     syncEl.style.cssText = "color:#15803d;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#f0fdf4;border-radius:0.5rem;border:1px solid #bbf7d0;text-align:center;";
     syncEl.textContent = "Check-in completado, Load Task activado y sincronizado con WISE/YMS. / Check-in completed, Load Task activated and synced with WISE/YMS.";
     etNumberEl.parentElement.insertBefore(syncEl, etNumberEl.nextSibling);
-  } else if (loadLinked && syncWarning) {
+  } else if (syncWarning) {
     const warnEl = document.createElement("p");
     warnEl.className = "et-number";
     warnEl.style.cssText = "color:#92400e;font-size:0.82rem;margin:0.6rem 0 0;padding:0.5rem 0.8rem;background:#fffbeb;border-radius:0.5rem;border:1px solid #fde68a;text-align:center;";

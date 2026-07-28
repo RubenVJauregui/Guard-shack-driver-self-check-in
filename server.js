@@ -75,6 +75,19 @@ function isEmailEnabled() {
   return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && ALERT_RECIPIENTS.length);
 }
 
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const normalized = String(value).trim();
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
 function formatNotificationLines(etNumber, payload) {
   const driver = payload.driverInfo || {};
   const carrier = payload.carrierInfo || {};
@@ -1074,7 +1087,16 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
   if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket") {
     try {
       const body = await readBody(req);
-      const payload = JSON.parse(body || "{}");
+      const payload = asObject(JSON.parse(body || "{}"));
+      const tripInfo = asObject(payload.tripInfo);
+      const entryTaskTag = firstNonEmptyString(
+        payload.entryTask,
+        payload.entryTaskTag,
+        payload.loadTypeGroup,
+        tripInfo.entryTask,
+        tripInfo.entryTaskTag,
+        tripInfo.loadTypeGroup
+      );
 
       const ymsToken = await getYmsBearerToken();
       if (!ymsToken) {
@@ -1114,7 +1136,6 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       }
 
       // Step 3: Attach trip/load info if WMS IDs available
-      const tripInfo = payload.tripInfo || {};
       if (tripInfo.loadId || tripInfo.customerId || tripInfo.receiptId || tripInfo.poNo) {
         try {
           await attachTripInfo(ymsToken, etNumber, tripInfo);

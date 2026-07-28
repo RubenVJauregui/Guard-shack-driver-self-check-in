@@ -168,7 +168,15 @@ assert(server.includes('YMS did not return an ET number'), 'server must fail cle
 assert(server.includes('temporary create failure, retrying once'), 'server must retry temporary YMS ET creation failures once');
 assert(server.includes('const ymsEtBySubmissionSignature = new Map();'), 'server must cache ETs by exact idempotency signature');
 assert(compactApp.includes('idempotencyKey: duplicateEtSignature'), 'client must send exact submission idempotency key to server');
+assert(compactApp.includes('entryTask: data.entryTask || ""'), 'client must send entry task context to /api/yms-entry-ticket');
 assert(compactApp.includes('if (etRes.ok && etData.ok === true && etData.etNumber)'), 'client must require ok true and etNumber before completion');
+const ymsEntryTicketRoute = server.indexOf('if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket")');
+const entryTaskTagDefinition = server.indexOf('const entryTaskTag = firstNonEmptyString(', ymsEntryTicketRoute);
+const entryTaskTagFirstUse = server.indexOf('entryTaskTag || ""', ymsEntryTicketRoute);
+assert(server.includes('function asObject(value)') && server.includes('function firstNonEmptyString(...values)'), 'server must provide defensive optional payload normalizers');
+assert(entryTaskTagDefinition > ymsEntryTicketRoute && entryTaskTagDefinition < entryTaskTagFirstUse, 'server must define entryTaskTag before strict ET mode selection uses it');
+assert(server.includes('payload.entryTask') && server.includes('payload.entryTaskTag') && server.includes('payload.loadTypeGroup') && server.includes('tripInfo.entryTask') && server.includes('tripInfo.entryTaskTag'), 'entryTaskTag must use available payload and trip task context');
+assert(compactApp.includes('const syncWarning = !syncOk ? String(etStatus.windowCheckinError || "").trim() : "";') && compactApp.includes('} else if (syncWarning) {'), 'ET/QR completion must show YMS task warnings without blocking successful ET creation');
 
 // DB Valley View classification lock.
 assert(db.includes("facility_id TEXT DEFAULT 'LT_F1'") && db.includes("facility_name TEXT DEFAULT 'Valley View'"), 'DB defaults must be LT_F1 / Valley View');
