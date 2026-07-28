@@ -5,6 +5,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const os = require("node:os");
 const nodemailer = require("nodemailer");
+const QRCode = require("qrcode");
 const db = require("./db");
 const { stagingToDoorMapping, outboundActiveStatuses, excludedStatuses } = require("./staging-door-config");
 
@@ -671,6 +672,31 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, { id, url: `${getPublicOrigin(req)}/identity.html?id=${id}` });
     return;
   }
+
+  if (req.method === "GET" && url.pathname === "/api/qr") {
+    const data = String(url.searchParams.get("data") || "").trim();
+    if (!data) {
+      res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end("Missing QR data");
+      return;
+    }
+    try {
+      const svg = await QRCode.toString(data, {
+        type: "svg",
+        width: 190,
+        margin: 2,
+        errorCorrectionLevel: "M"
+      });
+      res.writeHead(200, { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(svg);
+    } catch (err) {
+      console.log(`[QR] generation failed: ${err.message}`);
+      res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end("QR generation failed");
+    }
+    return;
+  }
+
 
   if (req.method === "GET" && url.pathname === "/api/wms-status") {
     const password = getWmsPassword();

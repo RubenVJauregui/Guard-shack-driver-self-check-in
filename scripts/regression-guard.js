@@ -37,8 +37,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet46'), 'index.html must load cache-busted app.js?v=strictet46');
-assert(index.includes('styles.css?v=strictet46'), 'index.html must load cache-busted styles.css?v=strictet46');
+assert(index.includes('app.js?v=strictet52'), 'index.html must load cache-busted app.js?v=strictet52');
+assert(index.includes('styles.css?v=strictet52'), 'index.html must load cache-busted styles.css?v=strictet52');
 
 
 
@@ -120,7 +120,7 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet46";'), 'app build version must be strictet46');
+assert(app.includes('const APP_BUILD_VERSION = "strictet52";'), 'app build version must be strictet52');
 assert(app.includes('DOCK_144: "Go to the door at dock 144"'), 'Excel dock 144 mapping must remain');
 assert(app.includes('DOCK_45: "Go to the door at Dock 40"'), 'Excel Dock 40 mapping must remain');
 assert(app.includes('\"Euromarket / Crate & Barrel\"'), 'Crate & Barrel customer mapping must remain');
@@ -194,6 +194,13 @@ assert(server.includes('ADDITIONAL_ADMIN_CHANGE_TOKENS'), 'additional admin chan
 assert(server.includes('function requireAdminChangeToken(req, res)'), 'protected dashboard changes must require admin token');
 assert(server.includes('if (!requireAdminChangeToken(req, res)) return;'), 'mutating dashboard/check-in routes must enforce admin token');
 assert(dashboardJs.includes('X-Admin-Change-Token'), 'dashboard must send admin change token for protected changes');
+
+// Local QR generation lock. The driver QR must not rely on a third-party image service.
+assert(app.includes('function setIdentityQr(identityUrl)'), 'client must use local QR helper for final identity QR');
+assert(app.includes('/api/qr?data='), 'client must load final identity QR from same-origin /api/qr endpoint');
+assert(!app.includes('api.qrserver.com'), 'client must not depend on external qrserver service for final QR');
+assert(server.includes('const QRCode = require("qrcode");'), 'server must include QR code generator dependency');
+assert(server.includes('url.pathname === "/api/qr"'), 'server must expose same-origin /api/qr endpoint');
 assert(!app.toLowerCase().includes('recover by load'), 'public ET recovery-by-load marker must not return');
 assert(!read('staging-door-config.js').includes('Fontana'), 'staging config must not contain stale Fontana comments');
 assert(!read('staging-door-config.js').includes('SharkNinja'), 'staging config must not contain stale SharkNinja comments');

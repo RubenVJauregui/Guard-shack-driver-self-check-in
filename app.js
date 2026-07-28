@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet51";
+const APP_BUILD_VERSION = "strictet52";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -760,8 +760,7 @@ async function completeCheckin() {
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
     if (qrHelp) qrHelp.style.display = "";
-    identityQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&data=${encodeURIComponent(identityUrl)}`;
-    identityQrLink.href = identityUrl;
+    setIdentityQr(identityUrl);
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your drop-off has been recorded.`;
@@ -772,8 +771,7 @@ async function completeCheckin() {
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
     if (qrHelp) qrHelp.style.display = "";
-    identityQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&data=${encodeURIComponent(identityUrl)}`;
-    identityQrLink.href = identityUrl;
+    setIdentityQr(identityUrl);
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your pickup has been recorded.`;
@@ -784,8 +782,7 @@ async function completeCheckin() {
     identityQrLink.style.display = "";
     const qrHelp = document.querySelector(".qr-help");
     if (qrHelp) qrHelp.style.display = "";
-    identityQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=190x190&margin=8&data=${encodeURIComponent(identityUrl)}`;
-    identityQrLink.href = identityUrl;
+    setIdentityQr(identityUrl);
     etNumberEl.textContent = `ET# ${etNumber}`;
     rnNumberEl.textContent = rnValue ? `RN# ${rnValue}` : "RN# Not provided";
     completionDetails.textContent = `${data.firstName || "Driver"}, your ${data.entryTask || "check-in"} has been recorded.`;
@@ -961,6 +958,14 @@ function loadImageElement(src) {
     img.onerror = reject;
     img.src = src;
   });
+}
+
+function setIdentityQr(identityUrl) {
+  if (!identityQr || !identityQrLink) return;
+  const safeUrl = identityUrl || `${window.location.origin}${window.location.pathname.replace(/[^/]*$/, "")}identity.html`;
+  identityQr.src = `/api/qr?data=${encodeURIComponent(safeUrl)}&v=${encodeURIComponent(APP_BUILD_VERSION)}`;
+  identityQrLink.href = safeUrl;
+  identityQr.alt = "Driver identity QR code";
 }
 
 async function saveIdentityRecord(identityRecord) {
