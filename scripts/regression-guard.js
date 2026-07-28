@@ -18,6 +18,7 @@ const dashboard = read('dashboard.html');
 const dashboardJs = read('dashboard.js');
 const identity = read('identity.html');
 const qr = read('generate-qr.js');
+const stagingConfig = read('staging-door-config.js');
 const readme = read('README.md');
 const pkg = read('package.json');
 const compactApp = app.replace(/\s+/g, ' ');
@@ -37,8 +38,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet53'), 'index.html must load cache-busted app.js?v=strictet53');
-assert(index.includes('styles.css?v=strictet53'), 'index.html must load cache-busted styles.css?v=strictet53');
+assert(index.includes('app.js?v=strictet54'), 'index.html must load cache-busted app.js?v=strictet54');
+assert(index.includes('styles.css?v=strictet54'), 'index.html must load cache-busted styles.css?v=strictet54');
 
 
 
@@ -120,7 +121,7 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet53";'), 'app build version must be strictet53');
+assert(app.includes('const APP_BUILD_VERSION = "strictet54";'), 'app build version must be strictet54');
 assert(index.includes('id="refreshPortalBtn"') && index.includes('type="button"'), 'portal must provide a non-submit refresh fallback button');
 assert(app.includes('window.addEventListener("keydown"') && app.includes('event.ctrlKey') && app.includes('event.shiftKey'), 'portal must listen for Ctrl + Shift keyboard shortcuts');
 assert(app.includes('String(event.key || "").toLowerCase() === "s"'), 'portal refresh shortcut must use Ctrl + Shift + S');
@@ -165,6 +166,25 @@ assert(server.includes('/wms-bam/outbound/order/search-by-paging'), 'server must
 assert(server.includes('function wmsLookupAny(identifier, authHeader)'), 'server must try load lookup before DN/order lookup');
 assert(server.includes('const wmsResult = await wmsLookupAny(rn, `Bearer ${bearerToken}`);'), '/api/wms-lookup must use the combined WMS lookup');
 assert(server.includes('matchType: "dn-order"'), 'DN/order matches must be identified in WMS lookup result');
+assert(compactApp.includes('dockId: wmsResult.dockId || ""') && compactApp.includes('dockName: wmsResult.dockName || ""'), 'client must forward verified WMS dock context when available');
+
+// Strict staged-door and Load Task dock resolution lock.
+const inventorySearchStart = server.indexOf('function wmsSearchInventoryByLoad(loadId, authHeader)');
+const inventorySearchEnd = server.indexOf('function wmsSearchLocations(locationIds, authHeader)', inventorySearchStart);
+const inventorySearch = server.slice(inventorySearchStart, inventorySearchEnd);
+assert(server.includes('const EXCLUDED_INVENTORY_STATUSES = Object.freeze(["SHIPPED", "ADJUSTOUT", "DAMAGE"]);'), 'staged inventory filtering must define excluded statuses locally');
+assert(inventorySearch.includes('statuses: OUTBOUND_INVENTORY_STATUSES') && inventorySearch.includes('excludeStatuses: EXCLUDED_INVENTORY_STATUSES'), 'staged inventory search must use defined status constants');
+assert(!/\bexcludeStatuses\s*,/.test(inventorySearch), 'staged inventory search must never reference undefined excludeStatuses shorthand');
+assert(stagingConfig.includes('"OPEN"') && stagingConfig.includes('"PICKED"') && stagingConfig.includes('"PACKED"') && stagingConfig.includes('"LOADED"'), 'staged inventory filtering must use valid active WMS inventory statuses');
+assert(!stagingConfig.includes('"STAGED"') && !stagingConfig.includes('"ALLOCATED"') && !stagingConfig.includes('"AVAILABLE"'), 'staged inventory filtering must not send unsupported inventory statuses');
+assert(server.includes('function numericDockId(value)') && server.includes('/^\\d+$/.test(normalized)'), 'WMS load task creation must accept only numeric dock/location IDs');
+assert(server.includes('const dockId = numericDockId(params.dockId);') && server.includes('reason=non_numeric_dock_id'), 'all WMS Load Task creation paths must centrally reject non-numeric dock IDs');
+assert(server.includes('async function resolveEtDock(etNumber, tripInfo, authHeader)'), 'ET flow must use centralized robust dock resolution');
+assert(server.includes('/wms-bam/outbound/load-task/search-by-paging') && server.includes('loadIds: [loadId]'), 'dock resolution must inspect existing WMS Load Tasks by load ID');
+assert(server.includes('/wms-bam/outbound/load/${encodeURIComponent(loadId)}'), 'dock resolution must inspect WMS load detail when earlier sources do not resolve a dock');
+assert(server.includes('function extractDockNameToken(value)') && server.includes('/\\bDOCK[\\s_-]*\\d+\\b/i'), 'dock-name fallback must extract verified DOCK numbers from display text');
+assert(server.includes('/wms-bam/wms-location/search') && server.includes('types: ["DOCK"]') && server.includes('statuses: ["USABLE"]'), 'dock-name fallback must verify a usable WMS DOCK location');
+assert(server.includes('reason=non_numeric_id') && server.includes('reason=location_is_not_dock') && server.includes('source=${source} dockId=${dockId}'), 'dock resolution must log chosen source and rejected candidates');
 
 // Strict ET creation lock.
 assert(server.includes('if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket")'), 'server must expose /api/yms-entry-ticket');

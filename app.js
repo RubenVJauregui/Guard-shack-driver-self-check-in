@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet53";
+const APP_BUILD_VERSION = "strictet54";
 const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_166;
 const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;
 
@@ -678,6 +678,8 @@ async function completeCheckin() {
             customerId: wmsResult.customerId || "",
             loadId: wmsResult.loadId || "",
             loadNo: wmsResult.loadNo || "",
+            dockId: wmsResult.dockId || "",
+            dockName: wmsResult.dockName || "",
             receiptId: wmsResult.receiptId || "",
             poNo: wmsResult.poNo || "",
             referenceNo: wmsResult.referenceNo || data.referenceNo || "",

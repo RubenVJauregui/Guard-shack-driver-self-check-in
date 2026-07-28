@@ -19,12 +19,10 @@ const stagingToDoorMapping = [
 
 // Inventory statuses that indicate freight is outbound/staged/ready for pickup.
 const outboundReadyInventoryStatuses = [
+  "OPEN",
   "PICKED",
   "PACKED",
-  "STAGED",
-  "LOADED",
-  "ALLOCATED",
-  "AVAILABLE"
+  "LOADED"
 ];
 
 if (typeof module !== "undefined") {

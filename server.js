@@ -7,7 +7,12 @@ const os = require("node:os");
 const nodemailer = require("nodemailer");
 const QRCode = require("qrcode");
 const db = require("./db");
-const { stagingToDoorMapping, outboundActiveStatuses, excludedStatuses } = require("./staging-door-config");
+const { stagingToDoorMapping, outboundReadyInventoryStatuses } = require("./staging-door-config");
+
+const OUTBOUND_INVENTORY_STATUSES = Array.isArray(outboundReadyInventoryStatuses)
+  ? outboundReadyInventoryStatuses
+  : [];
+const EXCLUDED_INVENTORY_STATUSES = Object.freeze(["SHIPPED", "ADJUSTOUT", "DAMAGE"]);
 
 process.on("uncaughtException", (err) => {
   if (err && (err.code === "ECONNRESET" || err.message === "aborted" || err.message === "Request aborted by client")) {
@@ -1164,7 +1169,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       let windowCheckinCompleted = false;
       let windowCheckinError = "";
       let createdLoadTaskId = tripInfo.loadTaskId || "";
-      let assignedDockId = tripInfo.dockId || "";
+      let assignedDockId = "";
       let assignedDockName = tripInfo.dockName || "";
       const isOutbound = tripInfo.direction !== "inbound";
       const hasLoad = Boolean(tripInfo.loadId);
@@ -1178,15 +1183,13 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       if (checkinCompleted && (hasLoad || tripInfo.receiptId)) {
         const wmsToken = await getWmsBearerToken().catch(() => null);
 
-        // Phase A: Resolve dock
-        if (!assignedDockId && tripInfo.loadId && wmsToken) {
+        // Phase A: Resolve a verified numeric dock/location ID and reuse any existing load task.
+        if (tripInfo.loadId && wmsToken) {
           try {
-            const stagedResult = await lookupStagedDoor(tripInfo.loadId, `Bearer ${wmsToken}`);
-            if (stagedResult.locationId || stagedResult.dockId) {
-              assignedDockId = stagedResult.locationId || stagedResult.dockId;
-              assignedDockName = stagedResult.locationName || stagedResult.door || "";
-              console.log(`[YMS ET] Dock resolved for ${etNumber}: id=${assignedDockId} name=${assignedDockName}`);
-            }
+            const dockResolution = await resolveEtDock(etNumber, tripInfo, `Bearer ${wmsToken}`);
+            assignedDockId = dockResolution.dockId;
+            assignedDockName = dockResolution.dockName || assignedDockName;
+            if (!createdLoadTaskId && dockResolution.loadTaskId) createdLoadTaskId = dockResolution.loadTaskId;
           } catch (e) {
             console.log(`[YMS ET] Dock resolution failed for ${etNumber}: ${e.message}`);
           }
@@ -1195,7 +1198,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         if (!AUTO_OPERATOR_ID) {
           windowCheckinError = "No default operator configured. Guard must assign user and dock manually.";
         } else if (!assignedDockId) {
-          windowCheckinError = "No dock/location ID resolved. Guard must assign dock manually in WISE.";
+          windowCheckinError = "LOAD linked to ET, but WISE did not return a verified numeric dock/location ID. Load Task could not be created automatically; guard must assign the dock in WISE.";
         } else {
           // Phase B: Materialize WMS Load Task BEFORE any YMS finalization
           if (isOutbound && hasLoad && !createdLoadTaskId && wmsToken) {
@@ -1743,7 +1746,9 @@ function formatWmsLookupResult(match) {
     loadId: match.id || match.loadId || "",
     orderIds: match.orderIds || [],
     carrierName: match.carrierName || "",
-    appointmentTime: match.appointmentTime || ""
+    appointmentTime: match.appointmentTime || "",
+    dockId: match.dockId || match.dockLocationId || match.locationId || "",
+    dockName: match.dockName || match.dockLocationName || match.locationName || ""
   };
 }
 
@@ -1763,7 +1768,9 @@ function formatWmsOrderLookupResult(match, rawInput) {
     referenceNo: match.referenceNo || match.refNo || "",
     soNo: Array.isArray(match.soNos) ? match.soNos.join(",") : (match.soNo || match.soNos || ""),
     carrierName: match.carrierName || "",
-    appointmentTime: match.appointmentTime || match.appointment || ""
+    appointmentTime: match.appointmentTime || match.appointment || "",
+    dockId: match.dockId || match.dockLocationId || match.locationId || "",
+    dockName: match.dockName || match.dockLocationName || match.locationName || ""
   };
 }
 
@@ -1989,8 +1996,8 @@ function wmsSearchInventoryByLoad(loadId, authHeader) {
     const searchUrl = new URL(`${WMS_BASE_URL}/wms/wms-inventory/search`);
     const postBody = JSON.stringify({
       loadId,
-      statuses: outboundActiveStatuses,
-      excludeStatuses,
+      statuses: OUTBOUND_INVENTORY_STATUSES,
+      excludeStatuses: EXCLUDED_INVENTORY_STATUSES,
       currentPage: 1,
       pageSize: 200
     });
@@ -2013,7 +2020,8 @@ function wmsSearchInventoryByLoad(loadId, authHeader) {
       res.on("end", () => {
         try {
           const parsed = JSON.parse(body);
-          const rows = parsed?.data || [];
+          const raw = parsed?.data?.inventories || parsed?.data?.list || parsed?.data?.records || parsed?.data || [];
+          const rows = Array.isArray(raw) ? raw : [];
           resolve(Array.isArray(rows) ? rows : []);
         } catch (err) {
           console.log(`[WMS inventory] loadId=${loadId} -> parse error: ${err.message}`);
@@ -2079,6 +2087,243 @@ function wmsSearchLocations(locationIds, authHeader) {
     req.write(postBody);
     req.end();
   });
+}
+
+function wmsJsonRequest(authHeader, method, apiPath, payload) {
+  return new Promise((resolve, reject) => {
+    const requestUrl = new URL(`${WMS_BASE_URL}${apiPath}`);
+    const postBody = payload === undefined ? "" : JSON.stringify(payload);
+    const headers = {
+      Authorization: authHeader,
+      "x-tenant-id": WMS_TENANT_ID,
+      "x-facility-id": WMS_FACILITY_ID,
+      "item-time-zone": TIMEZONE,
+      Accept: "application/json"
+    };
+    if (postBody) {
+      headers["Content-Type"] = "application/json";
+      headers["Content-Length"] = Buffer.byteLength(postBody);
+    }
+    const mod = requestUrl.protocol === "https:" ? https : http;
+    const req = mod.request(requestUrl, { method, headers, timeout: 8000 }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`${method} ${apiPath} status=${res.statusCode}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(body || "{}"));
+        } catch (err) {
+          reject(new Error(`${method} ${apiPath} parse error: ${err.message}`));
+        }
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error(`${method} ${apiPath} timeout`)));
+    if (postBody) req.write(postBody);
+    req.end();
+  });
+}
+
+function extractWmsList(response) {
+  const raw = response?.data?.list
+    || response?.data?.records
+    || response?.data?.tasks
+    || response?.data?.locations
+    || response?.data
+    || [];
+  return Array.isArray(raw) ? raw : [];
+}
+
+function extractDockCandidate(record) {
+  const value = asObject(record);
+  const dock = asObject(value.dock);
+  const dockLocation = asObject(value.dockLocation);
+  const location = asObject(value.location);
+  const loadTask = asObject(value.loadTask);
+  return {
+    dockId: firstNonEmptyString(
+      value.dockId,
+      value.dockLocationId,
+      value.locationId,
+      dock.id,
+      dockLocation.id,
+      location.id,
+      loadTask.dockId,
+      loadTask.dockLocationId
+    ),
+    dockName: firstNonEmptyString(
+      value.dockName,
+      value.dockLocationName,
+      value.locationName,
+      dock.name,
+      dockLocation.name,
+      location.name,
+      loadTask.dockName,
+      loadTask.dockLocationName
+    )
+  };
+}
+
+function numericDockId(value) {
+  const normalized = firstNonEmptyString(value);
+  return /^\d+$/.test(normalized) ? normalized : "";
+}
+
+function normalizedDockName(value) {
+  return firstNonEmptyString(value).toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function extractDockNameToken(value) {
+  const text = firstNonEmptyString(value);
+  const match = text.match(/\bDOCK[\s_-]*\d+\b/i);
+  return match ? match[0] : text;
+}
+
+function chooseDockCandidate(etNumber, source, candidate) {
+  const rawId = firstNonEmptyString(candidate?.dockId);
+  const dockName = firstNonEmptyString(candidate?.dockName);
+  if (!rawId) {
+    if (dockName) console.log(`[YMS ET] Dock candidate rejected for ${etNumber}: source=${source} reason=missing_numeric_id name=${dockName}`);
+    return { dockId: "", dockName };
+  }
+  const dockId = numericDockId(rawId);
+  if (!dockId) {
+    console.log(`[YMS ET] Dock candidate rejected for ${etNumber}: source=${source} reason=non_numeric_id candidate=${rawId} name=${dockName || "none"}`);
+    return { dockId: "", dockName };
+  }
+  console.log(`[YMS ET] Dock resolved for ${etNumber}: source=${source} dockId=${dockId} name=${dockName || "none"}`);
+  return { dockId, dockName };
+}
+
+async function findExistingLoadTaskDock(loadId, authHeader) {
+  const response = await wmsJsonRequest(authHeader, "POST", "/wms-bam/outbound/load-task/search-by-paging", {
+    loadIds: [loadId],
+    excludeStatuses: ["CANCELLED", "FORCE_CLOSED"],
+    currentPage: 1,
+    pageSize: 20
+  });
+  const tasks = extractWmsList(response);
+  console.log(`[YMS ET] Load Task dock lookup: loadId=${loadId} tasks=${tasks.length}`);
+  for (const task of tasks) {
+    const taskId = firstNonEmptyString(task?.id, task?.taskId);
+    const candidate = extractDockCandidate(task);
+    if (candidate.dockId || candidate.dockName) return { ...candidate, taskId, source: "load_task_search" };
+    if (!taskId) continue;
+    try {
+      const detail = await wmsJsonRequest(authHeader, "GET", `/wms-bam/outbound/load-task/${encodeURIComponent(taskId)}`);
+      const detailCandidate = extractDockCandidate(detail?.data || detail);
+      if (detailCandidate.dockId || detailCandidate.dockName) {
+        return { ...detailCandidate, taskId, source: "load_task_detail" };
+      }
+    } catch (err) {
+      console.log(`[YMS ET] Load Task detail lookup rejected: loadId=${loadId} taskId=${taskId} reason=${err.message}`);
+    }
+  }
+  return { dockId: "", dockName: "", taskId: firstNonEmptyString(tasks[0]?.id, tasks[0]?.taskId), source: "load_task_search" };
+}
+
+async function findLoadDetailDock(loadId, authHeader) {
+  const response = await wmsJsonRequest(authHeader, "GET", `/wms-bam/outbound/load/${encodeURIComponent(loadId)}`);
+  return { ...extractDockCandidate(response?.data || response), source: "load_detail" };
+}
+
+async function resolveDockNameLocation(etNumber, dockName, authHeader, source) {
+  const dockNameToken = extractDockNameToken(dockName);
+  const normalizedName = normalizedDockName(dockNameToken);
+  if (!/^DOCK\d+$/.test(normalizedName)) {
+    console.log(`[YMS ET] Dock name candidate rejected for ${etNumber}: source=${source} reason=not_dock_name name=${dockName}`);
+    return { dockId: "", dockName };
+  }
+  const response = await wmsJsonRequest(authHeader, "POST", "/wms-bam/wms-location/search", {
+    keyword: dockNameToken,
+    types: ["DOCK"],
+    statuses: ["USABLE"],
+    currentPage: 1,
+    pageSize: 20
+  });
+  const locations = extractWmsList(response);
+  for (const location of locations) {
+    const locationName = firstNonEmptyString(location?.name, location?.akaName);
+    const locationType = firstNonEmptyString(location?.type, location?.category).toUpperCase();
+    if (normalizedDockName(locationName) !== normalizedName) {
+      console.log(`[YMS ET] Dock location candidate rejected for ${etNumber}: source=${source} reason=name_mismatch candidate=${locationName || "none"}`);
+      continue;
+    }
+    if (locationType !== "DOCK") {
+      console.log(`[YMS ET] Dock location candidate rejected for ${etNumber}: source=${source} reason=not_dock_type type=${locationType || "none"}`);
+      continue;
+    }
+    const chosen = chooseDockCandidate(etNumber, `${source}_location_lookup`, { dockId: location?.id, dockName: locationName });
+    if (chosen.dockId) return chosen;
+  }
+  console.log(`[YMS ET] Dock name resolution failed for ${etNumber}: source=${source} name=${dockName} matches=${locations.length}`);
+  return { dockId: "", dockName };
+}
+
+async function resolveEtDock(etNumber, tripInfo, authHeader) {
+  let selected = chooseDockCandidate(etNumber, "trip_info", { dockId: tripInfo.dockId, dockName: tripInfo.dockName });
+  let existingLoadTaskId = firstNonEmptyString(tripInfo.loadTaskId);
+  const dockNames = [];
+  if (selected.dockName) dockNames.push({ name: selected.dockName, source: "trip_info" });
+
+  if (!selected.dockId) {
+    const stagedResult = await lookupStagedDoor(tripInfo.loadId, authHeader);
+    const stagedIsDock = stagedResult?.source === "dock_location"
+      || firstNonEmptyString(stagedResult?.locationType, stagedResult?.locationCategory).toUpperCase() === "DOCK";
+    if (stagedIsDock) {
+      selected = chooseDockCandidate(etNumber, "staged_inventory", {
+        dockId: stagedResult.locationId || stagedResult.dockId,
+        dockName: stagedResult.locationName || stagedResult.door
+      });
+    } else if (stagedResult?.locationId || stagedResult?.locationName) {
+      console.log(`[YMS ET] Dock candidate rejected for ${etNumber}: source=staged_inventory reason=location_is_not_dock locationId=${stagedResult.locationId || "none"} type=${stagedResult.locationType || stagedResult.locationCategory || "none"} name=${stagedResult.locationName || "none"}`);
+    }
+    if (stagedResult?.locationName) dockNames.push({ name: stagedResult.locationName, source: "staged_inventory" });
+    if (stagedResult?.door) dockNames.push({ name: stagedResult.door, source: "staged_inventory_door" });
+  }
+
+  try {
+    const loadTaskResult = await findExistingLoadTaskDock(tripInfo.loadId, authHeader);
+    if (loadTaskResult.taskId) {
+      existingLoadTaskId = loadTaskResult.taskId;
+      console.log(`[YMS ET] Existing WMS Load Task found for ${etNumber}: taskId=${existingLoadTaskId}`);
+    }
+    if (!selected.dockId) selected = chooseDockCandidate(etNumber, loadTaskResult.source, loadTaskResult);
+    if (loadTaskResult.dockName) dockNames.push({ name: loadTaskResult.dockName, source: loadTaskResult.source });
+  } catch (err) {
+    console.log(`[YMS ET] Load Task dock lookup failed for ${etNumber}: ${err.message}`);
+  }
+
+  if (!selected.dockId) {
+    try {
+      const loadDetailResult = await findLoadDetailDock(tripInfo.loadId, authHeader);
+      selected = chooseDockCandidate(etNumber, loadDetailResult.source, loadDetailResult);
+      if (loadDetailResult.dockName) dockNames.push({ name: loadDetailResult.dockName, source: loadDetailResult.source });
+    } catch (err) {
+      console.log(`[YMS ET] Load detail dock lookup failed for ${etNumber}: ${err.message}`);
+    }
+  }
+
+  if (!selected.dockId) {
+    const uniqueNames = [...new Map(dockNames.filter((item) => item.name).map((item) => [normalizedDockName(item.name), item])).values()];
+    for (const candidate of uniqueNames) {
+      try {
+        const resolved = await resolveDockNameLocation(etNumber, candidate.name, authHeader, candidate.source);
+        if (resolved.dockId) {
+          selected = resolved;
+          break;
+        }
+      } catch (err) {
+        console.log(`[YMS ET] Dock name lookup failed for ${etNumber}: source=${candidate.source} name=${candidate.name} reason=${err.message}`);
+      }
+    }
+  }
+
+  if (!selected.dockId) console.log(`[YMS ET] Dock unresolved for ${etNumber}: loadId=${tripInfo.loadId} no verified numeric dock/location ID found`);
+  return { ...selected, loadTaskId: existingLoadTaskId };
 }
 
 function resolveDoorFromStagedLocation(locations, inventoryRows) {
@@ -2267,9 +2512,16 @@ function fetchWiseOperatorsPage(authHeader, currentPage, pageSize) {
 
 function createWmsLoadTask(authHeader, params) {
   return new Promise((resolve) => {
+    const dockId = numericDockId(params.dockId);
+    if (!dockId) {
+      const rejectedDockId = firstNonEmptyString(params.dockId) || "missing";
+      console.log(`[Load task] Creation rejected: reason=non_numeric_dock_id candidate=${rejectedDockId}`);
+      resolve({ taskId: null, error: "A verified numeric dock/location ID is required." });
+      return;
+    }
     const taskUrl = new URL(`${WMS_BASE_URL}/wms/outbound/load-task/create`);
     const postBody = JSON.stringify({
-      dockId: params.dockId,
+      dockId,
       loadIds: params.loadIds,
       assigneeUserId: params.assigneeUserId,
       entryId: params.entryId || undefined,
