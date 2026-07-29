@@ -119,6 +119,10 @@ function buildCheckinValidation(context = {}) {
   const loadId = firstNonEmptyString(context.loadId);
   const dockId = numericDockId(context.dockId);
   const loadTaskId = firstNonEmptyString(context.loadTaskId);
+  const taskSource = firstNonEmptyString(context.taskSource);
+  const taskStatus = firstNonEmptyString(context.taskStatus);
+  const taskAssigneeUserId = firstNonEmptyString(context.taskAssigneeUserId, context.assigneeUserId);
+  const taskAssigneeUserName = firstNonEmptyString(context.taskAssigneeUserName, context.assigneeUserName);
   const entryStatus = firstNonEmptyString(context.entryStatus);
   const identityUrl = firstNonEmptyString(context.identityUrl);
   const syncStatus = firstNonEmptyString(context.syncStatus, context.wiseSynced ? "CONFIRMED" : "NOT_CONFIRMED");
@@ -141,8 +145,14 @@ function buildCheckinValidation(context = {}) {
       : (facts.loadLinked
         ? "LOAD vinculado al ET, pero falta Dock válido para crear Load Task. Seleccione/asigne un dock."
         : "No se confirmó un dock/location ID numérico válido."),
-    loadTaskCreated: facts.loadTaskCreated ? `Load Task ${loadTaskId} confirmado.` : "No se confirmó la creación o reutilización del Load Task.",
-    windowCheckinCompleted: facts.windowCheckinCompleted ? `Window Check-In confirmado${entryStatus ? ` con estado ${entryStatus}` : ""}.` : "Window Check-In todavía no fue confirmado por readback.",
+    loadTaskCreated: facts.loadTaskCreated
+      ? `Load Task ${loadTaskId} confirmado.`
+      : "No se confirmó la creación o reutilización del Load Task.",
+    windowCheckinCompleted: facts.windowCheckinCompleted
+      ? `Window Check-In confirmado${entryStatus ? ` con estado ${entryStatus}` : ""}.`
+      : (facts.loadTaskCreated
+        ? "Load Task existe, pero Window Check-In no fue confirmado. El guardia debe usar Save and Continue o revisar dock/usuario."
+        : "Window Check-In todavía no fue confirmado por readback."),
     qrCreated: facts.qrCreated ? "Identidad guardada y QR preparado." : "El QR todavía no fue confirmado por el portal.",
     wiseSynced: facts.wiseSynced ? "WISE/YMS confirmó la sincronización final." : "La sincronización final con WISE/YMS no fue confirmada."
   };
@@ -151,10 +161,10 @@ function buildCheckinValidation(context = {}) {
     dnLinked: { orderIds },
     loadLinked: { loadId },
     validDock: { dockId },
-    loadTaskCreated: { loadTaskId },
+    loadTaskCreated: { loadTaskId, taskSource, taskStatus, dockId, assigneeUserId: taskAssigneeUserId, assigneeUserName: taskAssigneeUserName },
     windowCheckinCompleted: { etNumber, entryStatus },
     qrCreated: { identityUrl },
-    wiseSynced: { etNumber, loadId, loadTaskId, entryStatus, syncStatus }
+    wiseSynced: { etNumber, loadId, loadTaskId, taskSource, taskStatus, entryStatus, syncStatus }
   };
   const steps = Object.keys(CHECKIN_VALIDATION_LABELS).map((key) => ({
     key,
@@ -166,7 +176,7 @@ function buildCheckinValidation(context = {}) {
   return {
     passed: steps.every((step) => step.passed),
     steps,
-    evidence: { etNumber, orderIds, loadId, dockId, loadTaskId, entryStatus, identityUrl, syncStatus },
+    evidence: { etNumber, orderIds, loadId, dockId, loadTaskId, taskSource, taskStatus, taskAssigneeUserId, taskAssigneeUserName, entryStatus, identityUrl, syncStatus },
     generatedAt: new Date().toISOString()
   };
 }
@@ -207,22 +217,43 @@ function collectYmsReadbackLoadIds(value) {
 function extractYmsReadback(detail, expectedLoadId) {
   const value = asObject(detail?.data || detail);
   const activity = asObject(value.activity);
-  const outboundTask = value.outboundTask || value.task || activity.outboundTask || activity.task || null;
+  const entryTicketView = asObject(value.entryTicketView);
+  const checkInInfo = asObject(entryTicketView.checkInInfo);
+  const outboundTaskCandidates = [];
+  const genericTaskCandidates = [];
+  const collectTasks = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return;
+    if (Array.isArray(candidate)) {
+      candidate.forEach(collectTasks);
+      return;
+    }
+    Object.entries(candidate).forEach(([key, child]) => {
+      if (/^outboundTask$/i.test(key) && child && typeof child === "object") outboundTaskCandidates.push(child);
+      else if (/^task$/i.test(key) && child && typeof child === "object") genericTaskCandidates.push(child);
+      if (child && typeof child === "object") collectTasks(child);
+    });
+  };
+  collectTasks(value);
+  const outboundTask = value.outboundTask || activity.outboundTask || outboundTaskCandidates[0] || value.task || activity.task || genericTaskCandidates[0] || null;
   const loadIds = collectYmsReadbackLoadIds(value);
   const expected = firstNonEmptyString(expectedLoadId);
   const loadLinked = Boolean(expected && loadIds.includes(expected));
-  const entryStatus = firstNonEmptyString(value.entryStatus, value.status);
-  const windowCheckinCompleted = /WINDOW_CHECKED_IN|DOCK_CHECKED_IN|IN_YARD|LOADING/i.test(entryStatus);
+  const entryStatus = firstNonEmptyString(value.entryStatus, value.status, entryTicketView.entryStatus, entryTicketView.status);
+  const loadTaskId = firstNonEmptyString(value.loadTaskId, entryTicketView.loadTaskId, outboundTask?.taskId, outboundTask?.id);
+  const windowCheckinCompleted = /WINDOW_CHECKED_IN|DOCK_CHECKED_IN|DOCK_CHECKED_OUT|PICKING_UP_PRELOAD|IN_YARD|LOADING/i.test(entryStatus);
   return {
     entryStatus,
     loadIds,
     loadLinked,
     outboundTripAttached: loadLinked,
-    taskPresent: Boolean(outboundTask),
-    dockId: firstNonEmptyString(outboundTask?.assignLocationId, outboundTask?.dockId, value.dockId, value.locationId),
-    loadTaskId: firstNonEmptyString(value.loadTaskId, outboundTask?.taskId),
+    taskPresent: Boolean(outboundTask || loadTaskId),
+    dockId: firstNonEmptyString(outboundTask?.assignLocationId, outboundTask?.plannedLocationId, outboundTask?.dockId, entryTicketView.pickUpLocationId, entryTicketView.dropOffLocationId, checkInInfo.locationId, checkInInfo.suggestLocationId, value.dockId, value.locationId),
+    loadTaskId,
+    taskStatus: firstNonEmptyString(outboundTask?.taskStatus, outboundTask?.status, outboundTask?.timeStatus, entryTicketView.loadTaskStatus, value.loadTaskStatus),
+    taskAssigneeUserId: firstNonEmptyString(outboundTask?.assigneeUserId, outboundTask?.preAssigneeUserId, entryTicketView.loadTaskAssignUserId),
+    taskAssigneeUserName: firstNonEmptyString(outboundTask?.assigneeUserName, outboundTask?.username, entryTicketView.loadTaskAssignUserName, entryTicketView.taskAssignee),
     windowCheckinCompleted,
-    wiseSynced: Boolean(windowCheckinCompleted && loadLinked && outboundTask)
+    wiseSynced: Boolean(windowCheckinCompleted && loadLinked && loadTaskId)
   };
 }
 
@@ -1177,8 +1208,9 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         note: `Valley View check-in #${id}. Driver: ${record.driver_name || ""}. ET: ${record.et_number || ""}.`
       });
       if (taskResult.taskId) {
-        await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskId: taskResult.taskId, loadTaskStatus: "created", loadTaskError: null, dockId });
-        sendJson(res, { created: true, taskId: taskResult.taskId, message: "Load task created and assigned." });
+        const taskStatus = taskResult.reused ? "reused" : "created";
+        await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskId: taskResult.taskId, loadTaskStatus: taskStatus, loadTaskError: null, dockId });
+        sendJson(res, { created: !taskResult.reused, reused: Boolean(taskResult.reused), taskId: taskResult.taskId, message: taskResult.reused ? "Existing Load Task validated and reused." : "Load task created and assigned." });
       } else {
         await db.updateLoadTask(id, { wiseOperatorId: operatorId, wiseOperatorName: operatorName, loadTaskStatus: "failed", loadTaskError: taskResult.error || "Task creation failed" });
         sendJson(res, { created: false, error: taskResult.error || "Load task creation failed." });
@@ -1339,6 +1371,10 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       let windowCheckinCompleted = false;
       let windowCheckinError = "";
       let createdLoadTaskId = tripInfo.loadTaskId || "";
+      let loadTaskSource = createdLoadTaskId ? "manual_readback" : "";
+      let loadTaskStatus = "";
+      let taskAssigneeUserId = "";
+      let taskAssigneeUserName = "";
       let assignedDockId = numericDockId(tripInfo.dockId);
       let assignedDockName = tripInfo.dockName || tripInfo.doorAssignment || "";
       let validationEntryStatus = "";
@@ -1385,7 +1421,16 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
             const dockResolution = await resolveEtDock(etNumber, tripInfo, wmsAuthHeader);
             assignedDockId = dockResolution.dockId;
             assignedDockName = dockResolution.dockName || assignedDockName;
-            if (!createdLoadTaskId && dockResolution.loadTaskId) createdLoadTaskId = dockResolution.loadTaskId;
+            if (dockResolution.loadTaskId) createdLoadTaskId = dockResolution.loadTaskId;
+            loadTaskSource = firstNonEmptyString(dockResolution.taskSource, loadTaskSource);
+            loadTaskStatus = firstNonEmptyString(dockResolution.taskStatus, loadTaskStatus);
+            taskAssigneeUserId = firstNonEmptyString(dockResolution.taskAssigneeUserId, taskAssigneeUserId);
+            taskAssigneeUserName = firstNonEmptyString(dockResolution.taskAssigneeUserName, taskAssigneeUserName);
+            if (dockResolution.loadTaskId && taskAssigneeUserId) {
+              selectedAssigneeId = taskAssigneeUserId;
+              selectedAssigneeName = firstNonEmptyString(taskAssigneeUserName, selectedAssigneeName);
+              selectedAssigneeSource = "existing_task";
+            }
           } catch (err) {
             console.log(`[YMS ET] Dock resolution failed for ${etNumber}: ${err.message}`);
           }
@@ -1414,7 +1459,12 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
                 });
                 if (ltResult.taskId) {
                   createdLoadTaskId = ltResult.taskId;
-                  console.log(`[YMS ET] WMS Load Task CREATED (${modeLabel}): taskId=${createdLoadTaskId} ET=${etNumber} DN=${tripInfo.orderIds.join(",") || "none"} LOAD=${tripInfo.loadId} dockId=${assignedDockId} dockName=${assignedDockName || "none"} assigneeId=${selectedAssigneeId} assigneeName=${selectedAssigneeName}`);
+                  loadTaskSource = firstNonEmptyString(ltResult.source, ltResult.reused ? "existing" : "created");
+                  loadTaskStatus = firstNonEmptyString(ltResult.status, loadTaskStatus);
+                  taskAssigneeUserId = firstNonEmptyString(ltResult.assigneeUserId, selectedAssigneeId);
+                  taskAssigneeUserName = firstNonEmptyString(ltResult.assigneeUserName, selectedAssigneeName);
+                  const taskAction = ltResult.reused ? "REUSED" : "CREATED";
+                  console.log(`[YMS ET] WMS Load Task ${taskAction} (${modeLabel}): taskId=${createdLoadTaskId} source=${loadTaskSource} ET=${etNumber} DN=${tripInfo.orderIds.join(",") || "none"} LOAD=${tripInfo.loadId} dockId=${assignedDockId} dockName=${assignedDockName || "none"} assigneeId=${selectedAssigneeId} assigneeName=${selectedAssigneeName}`);
                 } else {
                   activityLoadError = `WMS Load Task creation (${modeLabel}) failed: ${ltResult.error || "unknown"}`;
                   console.log(`[YMS ET] WMS Load Task FAILED (${modeLabel}) for ${etNumber}: ${activityLoadError}`);
@@ -1509,12 +1559,30 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
             for (let attempt = 1; attempt <= 3; attempt++) {
               if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
               const readback = await readYmsCheckinReadback(ymsToken, etNumber, tripInfo.loadId);
+              let confirmedTask = null;
+              if (wmsAuthHeader) {
+                try {
+                  confirmedTask = await findExistingLoadTask(wmsAuthHeader, { taskId: firstNonEmptyString(readback.loadTaskId, createdLoadTaskId), entryId: etNumber, loadId: tripInfo.loadId });
+                } catch (err) {
+                  console.log(`[YMS ET] WMS task readback unavailable for ${etNumber}: ${err.message}`);
+                }
+              }
+              createdLoadTaskId = firstNonEmptyString(readback.loadTaskId, confirmedTask?.taskId, createdLoadTaskId);
+              loadTaskSource = firstNonEmptyString(loadTaskSource, readback.loadTaskId ? "manual_readback" : "", confirmedTask?.source);
+              loadTaskStatus = firstNonEmptyString(readback.taskStatus, confirmedTask?.status, loadTaskStatus);
+              taskAssigneeUserId = firstNonEmptyString(readback.taskAssigneeUserId, confirmedTask?.assigneeUserId, taskAssigneeUserId, selectedAssigneeId);
+              taskAssigneeUserName = firstNonEmptyString(readback.taskAssigneeUserName, confirmedTask?.assigneeUserName, taskAssigneeUserName, selectedAssigneeName);
+              assignedDockId = numericDockId(firstNonEmptyString(readback.dockId, confirmedTask?.dockId, assignedDockId));
+              assignedDockName = firstNonEmptyString(confirmedTask?.dockName, assignedDockName);
               validationEntryStatus = readback.entryStatus || validationEntryStatus;
               validationLoadLinked = readback.loadLinked;
               validationLoadIds = readback.loadIds;
-              validationTaskPresent = readback.taskPresent;
+              validationTaskPresent = Boolean(readback.taskPresent && readback.loadTaskId);
               validationWiseSynced = Boolean(readback.wiseSynced && createdLoadTaskId && assignedDockId);
-              console.log(`[YMS ET] Readback #${attempt} for ${etNumber}: status=${readback.entryStatus || "unknown"} outboundLoadIds=${readback.loadIds.join(",") || "none"} expectedLoad=${tripInfo.loadId} hasLoad=${readback.loadLinked} hasTask=${readback.taskPresent} isDone=${readback.windowCheckinCompleted} loadTask=${createdLoadTaskId || "none"}`);
+              if (readback.windowCheckinCompleted && readback.loadTaskId) {
+                console.log(`[YMS ET] manual completion detected for ${etNumber}: status=${readback.entryStatus || "unknown"} taskId=${readback.loadTaskId}`);
+              }
+              console.log(`[YMS ET] Readback #${attempt} for ${etNumber}: status=${readback.entryStatus || "unknown"} outboundLoadIds=${readback.loadIds.join(",") || "none"} expectedLoad=${tripInfo.loadId} hasLoad=${readback.loadLinked} hasTask=${validationTaskPresent} isDone=${readback.windowCheckinCompleted} loadTask=${createdLoadTaskId || "none"} taskSource=${loadTaskSource || "none"}`);
               if (readback.windowCheckinCompleted && readback.loadLinked && readback.taskPresent && createdLoadTaskId && assignedDockId) {
                 verified = true;
                 verifyStatus = readback.entryStatus || "WINDOW_CHECKED_IN";
@@ -1528,7 +1596,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
               windowCheckinCompleted = true;
               console.log(`[YMS ET] VERIFIED ${etNumber} mode=${modeLabel}: status=${verifyStatus} loadTask=${createdLoadTaskId} dock=${assignedDockId} operator=${selectedAssigneeName}`);
             } else if (taskInfoDone && createdLoadTaskId) {
-              windowCheckinError = `LOAD vinculado, Load Task ${createdLoadTaskId} creado (${modeLabel}), pero YMS no confirmó Window Check-In (status=${verifyStatus || "unknown"}).`;
+              windowCheckinError = "Load Task existe, pero Window Check-In no fue confirmado. El guardia debe usar Save and Continue o revisar dock/usuario.";
               console.log(`[YMS ET] PARTIAL ${etNumber} mode=${modeLabel}: task created=${createdLoadTaskId} but readback not final. status=${verifyStatus}`);
             } else {
               activityLoadError = taskInfoError || taskEntryError || activityLoadError || "Final check-in steps did not complete.";
@@ -1573,6 +1641,10 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         dockId: assignedDockId,
         loadTaskId,
         loadTaskCreated: Boolean(loadTaskId),
+        taskSource: loadTaskSource,
+        taskStatus: loadTaskStatus,
+        taskAssigneeUserId,
+        taskAssigneeUserName,
         windowCheckinCompleted,
         qrCreated: false,
         wiseSynced: validationWiseSynced && windowCheckinCompleted,
@@ -1593,6 +1665,10 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         loadId: tripInfo.loadId || "",
         loadNo: tripInfo.loadNo || "",
         loadTaskId: loadTaskId || "",
+        taskSource: loadTaskSource || "",
+        taskStatus: loadTaskStatus || "",
+        taskAssigneeUserId: taskAssigneeUserId || "",
+        taskAssigneeUserName: taskAssigneeUserName || "",
         outboundTripInfoAttached: validationLoadLinked,
         outboundLoadIds: validationLoadIds,
         orderId: orderId || "",
@@ -1656,6 +1732,10 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         assigneeUserName: firstNonEmptyString(payload.assigneeUserName, payload.username, AUTO_OPERATOR_NAME),
         source: payload.assigneeUserId || payload.assigneeUserName || payload.username ? "explicit_requested" : "default_operator"
       };
+      let taskSource = requestedLoadTaskId ? "manual_readback" : "";
+      let taskStatus = "";
+      let taskAssigneeUserId = "";
+      let taskAssigneeUserName = "";
 
       const respondWithValidation = (context = {}, extra = {}, statusCode = 200) => {
         const validation = buildCheckinValidation({
@@ -1668,6 +1748,10 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
           dockId: firstNonEmptyString(context.dockId, requestedDockId),
           loadTaskId: firstNonEmptyString(context.loadTaskId, requestedLoadTaskId),
           loadTaskCreated: Boolean(firstNonEmptyString(context.loadTaskId, requestedLoadTaskId)),
+          taskSource: firstNonEmptyString(context.taskSource, taskSource),
+          taskStatus: firstNonEmptyString(context.taskStatus, taskStatus),
+          taskAssigneeUserId: firstNonEmptyString(context.taskAssigneeUserId, taskAssigneeUserId, selectedAssignee.assigneeUserId),
+          taskAssigneeUserName: firstNonEmptyString(context.taskAssigneeUserName, taskAssigneeUserName, selectedAssignee.assigneeUserName),
           windowCheckinCompleted: Boolean(context.windowCheckinCompleted),
           qrCreated: false,
           wiseSynced: Boolean(context.wiseSynced),
@@ -1684,6 +1768,8 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
           assignedDockId: firstNonEmptyString(context.dockId, requestedDockId),
           assignedDockName: firstNonEmptyString(context.dockName, requestedDockName),
           loadTaskId: firstNonEmptyString(context.loadTaskId, requestedLoadTaskId),
+          taskSource: firstNonEmptyString(context.taskSource, taskSource),
+          taskStatus: firstNonEmptyString(context.taskStatus, taskStatus),
           assignedOperatorId: selectedAssignee.assigneeUserId || "",
           assignedOperator: selectedAssignee.assigneeUserName || "",
           assigneeSource: selectedAssignee.source || "",
@@ -1721,7 +1807,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
 
       let readback = extractYmsReadback(etDetail, loadId);
       const detailValue = asObject(etDetail?.data || etDetail);
-      const createdSource = firstNonEmptyString(detailValue.createdSource);
+      const createdSource = firstNonEmptyString(detailValue.createdSource, detailValue.entryTicketView?.createdSource);
       const wmsToken = await getWmsBearerToken().catch(() => null);
       const wmsAuthHeader = wmsToken ? `Bearer ${wmsToken}` : "";
       selectedAssignee = await resolveWiseAssignee(etNumber, payload, tripInfo, wmsAuthHeader);
@@ -1730,7 +1816,11 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       readback = attachment.readback;
       console.log(`[YMS window] Outbound LOAD attachment ET=${etNumber} DN=${orderIds.join(",") || "none"} LOAD=${loadId} attached=${readback.loadLinked} outboundLoadIds=${readback.loadIds.join(",") || "none"}`);
 
-      let loadTaskId = firstNonEmptyString(requestedLoadTaskId, detailValue.loadTaskId, readback.loadTaskId);
+      let loadTaskId = firstNonEmptyString(readback.loadTaskId, detailValue.loadTaskId, requestedLoadTaskId);
+      taskSource = firstNonEmptyString(readback.loadTaskId ? "manual_readback" : "", taskSource);
+      taskStatus = firstNonEmptyString(readback.taskStatus, taskStatus);
+      taskAssigneeUserId = firstNonEmptyString(readback.taskAssigneeUserId, taskAssigneeUserId);
+      taskAssigneeUserName = firstNonEmptyString(readback.taskAssigneeUserName, taskAssigneeUserName);
       let dockId = numericDockId(firstNonEmptyString(requestedDockId, readback.dockId, detailValue.dockId, detailValue.locationId));
       let dockName = requestedDockName;
       if (wmsAuthHeader) {
@@ -1738,7 +1828,18 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
           const dockResolution = await resolveEtDock(etNumber, { ...tripInfo, dockId, dockName, loadTaskId }, wmsAuthHeader);
           dockId = firstNonEmptyString(dockResolution.dockId, dockId);
           dockName = firstNonEmptyString(dockResolution.dockName, dockName);
-          loadTaskId = firstNonEmptyString(loadTaskId, dockResolution.loadTaskId);
+          loadTaskId = firstNonEmptyString(dockResolution.loadTaskId, loadTaskId);
+          taskSource = firstNonEmptyString(taskSource, dockResolution.taskSource);
+          taskStatus = firstNonEmptyString(dockResolution.taskStatus, taskStatus);
+          taskAssigneeUserId = firstNonEmptyString(dockResolution.taskAssigneeUserId, taskAssigneeUserId);
+          taskAssigneeUserName = firstNonEmptyString(dockResolution.taskAssigneeUserName, taskAssigneeUserName);
+          if (dockResolution.loadTaskId && taskAssigneeUserId) {
+            selectedAssignee = {
+              assigneeUserId: taskAssigneeUserId,
+              assigneeUserName: firstNonEmptyString(taskAssigneeUserName, selectedAssignee.assigneeUserName),
+              source: "existing_task"
+            };
+          }
         } catch (err) {
           console.log(`[YMS window] Dock resolution failed for ${etNumber}: ${err.message}`);
         }
@@ -1750,11 +1851,17 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         dockId,
         dockName,
         loadTaskId,
+        taskSource,
+        taskStatus,
+        taskAssigneeUserId,
+        taskAssigneeUserName,
         wiseSynced: Boolean(readback.wiseSynced && numericDockId(dockId) && loadTaskId)
       });
 
-      if (readback.windowCheckinCompleted) {
-        respondWithValidation(readbackContext(), { reason: "Window Check-In readback completed." });
+      if (readback.windowCheckinCompleted && readback.taskPresent && loadTaskId) {
+        taskSource = "manual_readback";
+        console.log(`[YMS window] manual completion detected: ET=${etNumber} status=${readback.entryStatus || "unknown"} taskId=${loadTaskId}; duplicate prevention active`);
+        respondWithValidation(readbackContext(), { reason: "Window Check-In readback completed with an existing Load Task." });
         return;
       }
       if (createdSource && createdSource !== "SELF_CHECKIN") {
@@ -1792,11 +1899,16 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
           note: `Window completion: ET=${etNumber} LOAD=${loadId} dock=${dockName || dockId} assignee=${selectedAssignee.assigneeUserName}`
         });
         loadTaskId = firstNonEmptyString(taskResult.taskId);
+        taskSource = firstNonEmptyString(taskResult.source, taskResult.reused ? "existing" : "created");
+        taskStatus = firstNonEmptyString(taskResult.status, taskStatus);
+        taskAssigneeUserId = firstNonEmptyString(taskResult.assigneeUserId, selectedAssignee.assigneeUserId);
+        taskAssigneeUserName = firstNonEmptyString(taskResult.assigneeUserName, selectedAssignee.assigneeUserName);
         if (!loadTaskId) {
           respondWithValidation(readbackContext(), { reason: taskResult.error || "Load Task could not be created." });
           return;
         }
-        console.log(`[YMS window] WMS Load Task CREATED: taskId=${loadTaskId} ET=${etNumber} DN=${orderIds.join(",") || "none"} LOAD=${loadId} dockId=${dockId} dockName=${dockName || "none"} assigneeId=${selectedAssignee.assigneeUserId} assigneeName=${selectedAssignee.assigneeUserName}`);
+        const taskAction = taskResult.reused ? "REUSED" : "CREATED";
+        console.log(`[YMS window] WMS Load Task ${taskAction}: taskId=${loadTaskId} source=${taskSource} ET=${etNumber} DN=${orderIds.join(",") || "none"} LOAD=${loadId} dockId=${dockId} dockName=${dockName || "none"} assigneeId=${selectedAssignee.assigneeUserId} assigneeName=${selectedAssignee.assigneeUserName}`);
       } else {
         console.log(`[YMS window] WMS Load Task REUSED: taskId=${loadTaskId} ET=${etNumber} LOAD=${loadId} dockId=${dockId} assigneeId=${selectedAssignee.assigneeUserId}`);
       }
@@ -1823,6 +1935,15 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         console.log(`[YMS window] task-entry-checkin accepted for ${etNumber}: loadIds=${loadId} taskId=${loadTaskId} dockId=${dockId} assignee=${selectedAssignee.assigneeUserName}`);
       } catch (err) {
         console.log(`[YMS window] task-entry-checkin failed for ${etNumber}: ${err.message}`);
+        readback = await readYmsCheckinReadback(ymsToken, etNumber, loadId);
+        loadTaskId = firstNonEmptyString(readback.loadTaskId, loadTaskId);
+        dockId = numericDockId(firstNonEmptyString(readback.dockId, dockId));
+        if (readback.windowCheckinCompleted && readback.taskPresent && loadTaskId) {
+          taskSource = "manual_readback";
+          console.log(`[YMS window] manual completion detected after task-entry-checkin response: ET=${etNumber} status=${readback.entryStatus || "unknown"} taskId=${loadTaskId}`);
+          respondWithValidation(readbackContext(), { reason: "Window Check-In readback completed with an existing Load Task." });
+          return;
+        }
         respondWithValidation(readbackContext(), { reason: "LOAD and Load Task are ready, but the yard task could not be activated." });
         return;
       }
@@ -1845,6 +1966,15 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         console.log(`[YMS window] task-info-checkin accepted for ${etNumber}; verifying readback`);
       } catch (err) {
         console.log(`[YMS window] task-info-checkin failed for ${etNumber}: ${err.message}`);
+        readback = await readYmsCheckinReadback(ymsToken, etNumber, loadId);
+        loadTaskId = firstNonEmptyString(readback.loadTaskId, loadTaskId);
+        dockId = numericDockId(firstNonEmptyString(readback.dockId, dockId));
+        if (readback.windowCheckinCompleted && readback.taskPresent && loadTaskId) {
+          taskSource = "manual_readback";
+          console.log(`[YMS window] manual completion detected after task-info-checkin response: ET=${etNumber} status=${readback.entryStatus || "unknown"} taskId=${loadTaskId}`);
+          respondWithValidation(readbackContext(), { reason: "Window Check-In readback completed with an existing Load Task." });
+          return;
+        }
         respondWithValidation(readbackContext(), { reason: "Window Check-In was not accepted. Guard review is required." });
         return;
       }
@@ -1852,9 +1982,25 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       for (let attempt = 1; attempt <= 3; attempt++) {
         if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
         readback = await readYmsCheckinReadback(ymsToken, etNumber, loadId);
-        loadTaskId = firstNonEmptyString(loadTaskId, readback.loadTaskId);
-        dockId = firstNonEmptyString(dockId, readback.dockId);
-        console.log(`[YMS window] Readback #${attempt} ET=${etNumber} status=${readback.entryStatus || "unknown"} outboundLoadIds=${readback.loadIds.join(",") || "none"} load=${readback.loadLinked} task=${readback.taskPresent} window=${readback.windowCheckinCompleted}`);
+        let confirmedTask = null;
+        if (wmsAuthHeader) {
+          try {
+            confirmedTask = await findExistingLoadTask(wmsAuthHeader, { taskId: firstNonEmptyString(readback.loadTaskId, loadTaskId), entryId: etNumber, loadId });
+          } catch (err) {
+            console.log(`[YMS window] WMS task readback unavailable for ${etNumber}: ${err.message}`);
+          }
+        }
+        loadTaskId = firstNonEmptyString(readback.loadTaskId, confirmedTask?.taskId, loadTaskId);
+        taskSource = firstNonEmptyString(taskSource, readback.loadTaskId ? "manual_readback" : "", confirmedTask?.source);
+        taskStatus = firstNonEmptyString(readback.taskStatus, confirmedTask?.status, taskStatus);
+        taskAssigneeUserId = firstNonEmptyString(readback.taskAssigneeUserId, confirmedTask?.assigneeUserId, taskAssigneeUserId, selectedAssignee.assigneeUserId);
+        taskAssigneeUserName = firstNonEmptyString(readback.taskAssigneeUserName, confirmedTask?.assigneeUserName, taskAssigneeUserName, selectedAssignee.assigneeUserName);
+        dockId = numericDockId(firstNonEmptyString(readback.dockId, confirmedTask?.dockId, dockId));
+        dockName = firstNonEmptyString(confirmedTask?.dockName, dockName);
+        if (readback.windowCheckinCompleted && readback.loadTaskId) {
+          console.log(`[YMS window] manual completion detected during readback: ET=${etNumber} status=${readback.entryStatus || "unknown"} taskId=${readback.loadTaskId}`);
+        }
+        console.log(`[YMS window] Readback #${attempt} ET=${etNumber} status=${readback.entryStatus || "unknown"} outboundLoadIds=${readback.loadIds.join(",") || "none"} load=${readback.loadLinked} task=${readback.taskPresent} taskId=${loadTaskId || "none"} taskSource=${taskSource || "none"} window=${readback.windowCheckinCompleted}`);
         if (readback.windowCheckinCompleted && readback.loadLinked && readback.taskPresent) break;
       }
 
@@ -1862,7 +2008,9 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       respondWithValidation(context, {
         reason: context.wiseSynced
           ? "Window Check-In and WISE/YMS synchronization confirmed."
-          : "Window Check-In is still awaiting final WISE/YMS readback."
+          : (loadTaskId
+            ? "Load Task existe, pero Window Check-In no fue confirmado. El guardia debe usar Save and Continue o revisar dock/usuario."
+            : "Window Check-In is still awaiting final WISE/YMS readback.")
       });
     } catch (err) {
       console.log(`[YMS window] endpoint error: ${err.message}`);
@@ -2574,31 +2722,146 @@ function chooseDockCandidate(etNumber, source, candidate) {
   return { dockId, dockName };
 }
 
-async function findExistingLoadTaskDock(loadId, authHeader) {
-  const response = await wmsJsonRequest(authHeader, "POST", "/wms-bam/outbound/load-task/search-by-paging", {
-    loadIds: [loadId],
-    excludeStatuses: ["CANCELLED", "FORCE_CLOSED"],
-    currentPage: 1,
-    pageSize: 20
-  });
-  const tasks = extractWmsList(response);
-  console.log(`[YMS ET] Load Task dock lookup: loadId=${loadId} tasks=${tasks.length}`);
-  for (const task of tasks) {
-    const taskId = firstNonEmptyString(task?.id, task?.taskId);
-    const candidate = extractDockCandidate(task);
-    if (candidate.dockId || candidate.dockName) return { ...candidate, taskId, source: "load_task_search" };
-    if (!taskId) continue;
-    try {
-      const detail = await wmsJsonRequest(authHeader, "GET", `/wms-bam/outbound/load-task/${encodeURIComponent(taskId)}`);
-      const detailCandidate = extractDockCandidate(detail?.data || detail);
-      if (detailCandidate.dockId || detailCandidate.dockName) {
-        return { ...detailCandidate, taskId, source: "load_task_detail" };
-      }
-    } catch (err) {
-      console.log(`[YMS ET] Load Task detail lookup rejected: loadId=${loadId} taskId=${taskId} reason=${err.message}`);
-    }
+const INACTIVE_LOAD_TASK_STATUSES = new Set(["CANCELLED", "FORCE_CLOSED", "VOID", "VOIDED"]);
+const WMS_SEARCH_EXCLUDED_LOAD_TASK_STATUSES = ["CANCELLED", "FORCE_CLOSED"];
+
+function extractLoadTaskRecord(record, source = "unknown", queryEvidence = {}) {
+  const value = asObject(record?.data || record);
+  const dock = extractDockCandidate(value);
+  const loads = Array.isArray(value.loads) ? value.loads : [];
+  return {
+    taskId: firstNonEmptyString(value.id, value.taskId, value.loadTaskId),
+    loadIds: validationIds(value.loadIds, loads.map((load) => firstNonEmptyString(load?.id, load?.loadId))),
+    entryId: firstNonEmptyString(value.entryId, value.entryTicketId),
+    dockId: numericDockId(firstNonEmptyString(dock.dockId, value.assignLocationId, value.plannedLocationId)),
+    dockName: firstNonEmptyString(dock.dockName, value.assignLocationName, value.plannedLocationName),
+    assigneeUserId: firstNonEmptyString(value.assigneeUserId, value.preAssigneeUserId, value.assignee?.id),
+    assigneeUserName: firstNonEmptyString(value.assigneeUserName, value.assigneeName, value.assignee?.userName, value.assignee?.name),
+    status: firstNonEmptyString(value.status, value.taskStatus),
+    source,
+    queryEntryId: firstNonEmptyString(queryEvidence.entryId),
+    queryLoadId: firstNonEmptyString(queryEvidence.loadId)
+  };
+}
+
+function mergeLoadTaskRecords(primary, secondary) {
+  return {
+    taskId: firstNonEmptyString(secondary.taskId, primary.taskId),
+    loadIds: validationIds(secondary.loadIds, primary.loadIds),
+    entryId: firstNonEmptyString(secondary.entryId, primary.entryId),
+    dockId: numericDockId(firstNonEmptyString(secondary.dockId, primary.dockId)),
+    dockName: firstNonEmptyString(secondary.dockName, primary.dockName),
+    assigneeUserId: firstNonEmptyString(secondary.assigneeUserId, primary.assigneeUserId),
+    assigneeUserName: firstNonEmptyString(secondary.assigneeUserName, primary.assigneeUserName),
+    status: firstNonEmptyString(secondary.status, primary.status),
+    source: firstNonEmptyString(secondary.source, primary.source),
+    queryEntryId: firstNonEmptyString(primary.queryEntryId, secondary.queryEntryId),
+    queryLoadId: firstNonEmptyString(primary.queryLoadId, secondary.queryLoadId)
+  };
+}
+
+function activeLoadTask(task) {
+  return Boolean(task?.taskId && !INACTIVE_LOAD_TASK_STATUSES.has(firstNonEmptyString(task.status).toUpperCase()));
+}
+
+function loadTaskMatchesExpected(task, expected = {}) {
+  const expectedTaskId = firstNonEmptyString(expected.taskId);
+  const expectedEntryId = firstNonEmptyString(expected.entryId);
+  const expectedLoadId = firstNonEmptyString(expected.loadId);
+  return Boolean(
+    (expectedTaskId && task.taskId === expectedTaskId)
+    || (expectedEntryId && (task.entryId === expectedEntryId || task.queryEntryId === expectedEntryId))
+    || (expectedLoadId && (task.loadIds.includes(expectedLoadId) || task.queryLoadId === expectedLoadId))
+  );
+}
+
+async function hydrateLoadTask(authHeader, candidate) {
+  if (!candidate.taskId) return candidate;
+  try {
+    const detail = await wmsJsonRequest(authHeader, "GET", `/wms-bam/outbound/load-task/${encodeURIComponent(candidate.taskId)}`);
+    return mergeLoadTaskRecords(candidate, extractLoadTaskRecord(detail, `${candidate.source}_detail`));
+  } catch (err) {
+    console.log(`[Load task] Detail readback failed: taskId=${candidate.taskId} source=${candidate.source} reason=${err.message}`);
+    return candidate;
   }
-  return { dockId: "", dockName: "", taskId: firstNonEmptyString(tasks[0]?.id, tasks[0]?.taskId), source: "load_task_search" };
+}
+
+async function searchLoadTasks(authHeader, filters, source, queryEvidence) {
+  try {
+    const response = await wmsJsonRequest(authHeader, "POST", "/wms-bam/outbound/load-task/search-by-paging", {
+      ...filters,
+      excludeStatuses: WMS_SEARCH_EXCLUDED_LOAD_TASK_STATUSES,
+      currentPage: 1,
+      pageSize: 20
+    });
+    const tasks = extractWmsList(response);
+    console.log(`[Load task] Existing-task search: source=${source} entryId=${queryEvidence.entryId || "none"} loadId=${queryEvidence.loadId || "none"} matches=${tasks.length}`);
+    return { candidates: tasks.map((task) => extractLoadTaskRecord(task, source, queryEvidence)), failed: false };
+  } catch (err) {
+    console.log(`[Load task] Existing-task search failed: source=${source} reason=${err.message}`);
+    return { candidates: [], failed: true };
+  }
+}
+
+async function findExistingLoadTask(authHeader, expected = {}) {
+  if (!authHeader) return null;
+  const entryId = firstNonEmptyString(expected.entryId);
+  const loadId = firstNonEmptyString(expected.loadId, expected.loadIds?.[0]);
+  const taskId = firstNonEmptyString(expected.taskId, expected.loadTaskId);
+  const candidates = [];
+  let lookupFailed = false;
+
+  if (taskId) {
+    candidates.push(extractLoadTaskRecord({ id: taskId }, "manual_readback"));
+  }
+  if (entryId) {
+    const entrySearch = await searchLoadTasks(authHeader, { entryIds: [entryId] }, "entry_search", { entryId });
+    candidates.push(...entrySearch.candidates);
+    lookupFailed = lookupFailed || entrySearch.failed;
+  }
+  if (loadId) {
+    const loadSearch = await searchLoadTasks(authHeader, { loadIds: [loadId] }, "load_search", { loadId });
+    candidates.push(...loadSearch.candidates);
+    lookupFailed = lookupFailed || loadSearch.failed;
+  }
+
+  const candidatesById = new Map();
+  for (const candidate of candidates) {
+    if (candidate.taskId && !candidatesById.has(candidate.taskId)) candidatesById.set(candidate.taskId, candidate);
+  }
+  const uniqueCandidates = [...candidatesById.values()];
+  for (const candidate of uniqueCandidates) {
+    const task = await hydrateLoadTask(authHeader, candidate);
+    if (!activeLoadTask(task)) {
+      console.log(`[Load task] Existing candidate rejected: taskId=${task.taskId || "none"} reason=inactive status=${task.status || "unknown"}`);
+      continue;
+    }
+    if (!loadTaskMatchesExpected(task, { taskId, entryId, loadId })) {
+      console.log(`[Load task] Existing candidate rejected: taskId=${task.taskId} reason=identifier_mismatch entryId=${task.entryId || "none"} loadIds=${task.loadIds.join(",") || "none"}`);
+      continue;
+    }
+    const source = candidate.source === "manual_readback" ? "manual_readback" : "existing";
+    console.log(`[Load task] Load Task REUSED: taskId=${task.taskId} source=${source} searchSource=${candidate.source} status=${task.status || "unknown"} entryId=${task.entryId || entryId || "none"} loadIds=${task.loadIds.join(",") || loadId || "none"} dockId=${task.dockId || "none"} assigneeId=${task.assigneeUserId || "none"}`);
+    return { ...task, source };
+  }
+  if (lookupFailed) throw new Error("Existing Load Task lookup could not be completed safely.");
+  return null;
+}
+
+async function findExistingLoadTaskDock(loadId, entryId, taskId, authHeader) {
+  const task = await findExistingLoadTask(authHeader, { loadId, entryId, taskId });
+  if (!task) return { dockId: "", dockName: "", taskId: "", source: "none", status: "" };
+  return {
+    dockId: task.dockId,
+    dockName: task.dockName,
+    taskId: task.taskId,
+    source: task.source,
+    status: task.status,
+    assigneeUserId: task.assigneeUserId,
+    assigneeUserName: task.assigneeUserName,
+    entryId: task.entryId,
+    loadIds: task.loadIds
+  };
 }
 
 async function findLoadDetailDock(loadId, authHeader) {
@@ -2764,6 +3027,7 @@ function resolveLoadMode(entryTaskTag) {
 async function resolveEtDock(etNumber, tripInfo, authHeader) {
   let selected = chooseDockCandidate(etNumber, "trip_info", { dockId: tripInfo.dockId, dockName: tripInfo.dockName });
   let existingLoadTaskId = firstNonEmptyString(tripInfo.loadTaskId);
+  let existingLoadTask = null;
   const dockNames = validationIds(tripInfo.dockName, tripInfo.doorAssignment, tripInfo.assignment)
     .map((name) => ({ name, source: name === tripInfo.dockName ? "trip_info" : "portal_assignment" }));
 
@@ -2788,12 +3052,17 @@ async function resolveEtDock(etNumber, tripInfo, authHeader) {
   }
 
   try {
-    const loadTaskResult = await findExistingLoadTaskDock(tripInfo.loadId, authHeader);
+    const loadTaskResult = await findExistingLoadTaskDock(tripInfo.loadId, etNumber, tripInfo.loadTaskId, authHeader);
     if (loadTaskResult.taskId) {
       existingLoadTaskId = loadTaskResult.taskId;
+      existingLoadTask = loadTaskResult;
       console.log(`[YMS ET] Existing WMS Load Task found for ${etNumber}: taskId=${existingLoadTaskId}`);
     }
-    if (!selected.dockId) selected = chooseDockCandidate(etNumber, loadTaskResult.source, loadTaskResult);
+    if (loadTaskResult.taskId && loadTaskResult.dockId) {
+      selected = chooseDockCandidate(etNumber, `${loadTaskResult.source}_authoritative`, loadTaskResult);
+    } else if (!selected.dockId) {
+      selected = chooseDockCandidate(etNumber, loadTaskResult.source, loadTaskResult);
+    }
     if (loadTaskResult.dockName) dockNames.push({ name: loadTaskResult.dockName, source: loadTaskResult.source });
   } catch (err) {
     console.log(`[YMS ET] Load Task dock lookup failed for ${etNumber}: ${err.message}`);
@@ -2826,7 +3095,14 @@ async function resolveEtDock(etNumber, tripInfo, authHeader) {
   }
 
   if (!selected.dockId) console.log(`[YMS ET] Dock unresolved for ${etNumber}: loadId=${tripInfo.loadId} no verified numeric dock/location ID found`);
-  return { ...selected, loadTaskId: existingLoadTaskId };
+  return {
+    ...selected,
+    loadTaskId: existingLoadTaskId,
+    taskSource: existingLoadTask?.source || "",
+    taskStatus: existingLoadTask?.status || "",
+    taskAssigneeUserId: existingLoadTask?.assigneeUserId || "",
+    taskAssigneeUserName: existingLoadTask?.assigneeUserName || ""
+  };
 }
 
 function resolveDoorFromStagedLocation(locations, inventoryRows) {
@@ -3013,7 +3289,7 @@ function fetchWiseOperatorsPage(authHeader, currentPage, pageSize) {
   });
 }
 
-function createWmsLoadTask(authHeader, params) {
+function createWmsLoadTaskRequest(authHeader, params) {
   return new Promise((resolve) => {
     const dockId = numericDockId(params.dockId);
     if (!dockId) {
@@ -3102,6 +3378,35 @@ async function autoPostCheckinWorkflow(checkinId, record) {
 
   await autoSendOpsEmail(checkinId, record, loadTaskResult);
 }
+async function createWmsLoadTask(authHeader, params) {
+  const loadId = firstNonEmptyString(params.loadIds?.[0], params.loadId);
+  let existingTask;
+  try {
+    existingTask = await findExistingLoadTask(authHeader, {
+      taskId: firstNonEmptyString(params.existingTaskId, params.loadTaskId),
+      entryId: params.entryId,
+      loadId
+    });
+  } catch (err) {
+    console.log(`[Load task] Load Task CREATE skipped: duplicate prevention unavailable entryId=${params.entryId || "none"} loadId=${loadId || "none"} reason=${err.message}`);
+    return { taskId: null, error: "Existing Load Task validation is unavailable. Creation was skipped to prevent a duplicate.", duplicateCheckFailed: true };
+  }
+  if (existingTask) {
+    console.log(`[Load task] Load Task CREATE skipped: duplicate prevention taskId=${existingTask.taskId} entryId=${params.entryId || "none"} loadId=${loadId || "none"} source=${existingTask.source}`);
+    return { ...existingTask, reused: true };
+  }
+  const created = await createWmsLoadTaskRequest(authHeader, params);
+  return {
+    ...created,
+    source: created.taskId ? "created" : "",
+    reused: false,
+    loadIds: validationIds(params.loadIds),
+    entryId: firstNonEmptyString(params.entryId),
+    dockId: numericDockId(params.dockId),
+    assigneeUserId: firstNonEmptyString(params.assigneeUserId),
+    status: created.taskId ? "NEW" : ""
+  };
+}
 
 async function autoCreateLoadTask(checkinId, record) {
   const loadId = record.loadId || record.load_id || record.wmsLoadNo || record.wms_load_no || "";
@@ -3146,9 +3451,10 @@ async function autoCreateLoadTask(checkinId, record) {
   });
 
   if (taskResult.taskId) {
-    console.log(`[Auto load task] checkin #${checkinId}: Task created successfully: ${taskResult.taskId}`);
-    try { await db.updateLoadTask(checkinId, { wiseOperatorId: AUTO_OPERATOR_ID, wiseOperatorName: AUTO_OPERATOR_NAME, loadTaskId: taskResult.taskId, loadTaskStatus: "created", loadTaskError: null, dockId }); } catch (e) {}
-    return { status: "created", taskId: taskResult.taskId, error: null };
+    const taskStatus = taskResult.reused ? "reused" : "created";
+    console.log(`[Auto load task] checkin #${checkinId}: Task ${taskStatus} successfully: ${taskResult.taskId}`);
+    try { await db.updateLoadTask(checkinId, { wiseOperatorId: AUTO_OPERATOR_ID, wiseOperatorName: AUTO_OPERATOR_NAME, loadTaskId: taskResult.taskId, loadTaskStatus: taskStatus, loadTaskError: null, dockId }); } catch (e) {}
+    return { status: taskStatus, taskId: taskResult.taskId, error: null };
   } else {
     const errMsg = taskResult.error || "Task creation failed";
     console.log(`[Auto load task] checkin #${checkinId}: Task creation failed: ${errMsg}`);

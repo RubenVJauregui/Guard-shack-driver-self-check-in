@@ -38,8 +38,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet56'), 'index.html must load cache-busted app.js?v=strictet56');
-assert(index.includes('styles.css?v=strictet56'), 'index.html must load cache-busted styles.css?v=strictet56');
+assert(index.includes('app.js?v=strictet57'), 'index.html must load cache-busted app.js?v=strictet57');
+assert(index.includes('styles.css?v=strictet57'), 'index.html must load cache-busted styles.css?v=strictet57');
 
 
 
@@ -121,7 +121,7 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet56";'), 'app build version must be strictet56');
+assert(app.includes('const APP_BUILD_VERSION = "strictet57";'), 'app build version must be strictet57');
 assert(index.includes('id="refreshPortalBtn"') && index.includes('type="button"'), 'portal must provide a non-submit refresh fallback button');
 assert(app.includes('window.addEventListener("keydown"') && app.includes('event.ctrlKey') && app.includes('event.shiftKey'), 'portal must listen for Ctrl + Shift keyboard shortcuts');
 assert(app.includes('String(event.key || "").toLowerCase() === "s"'), 'portal refresh shortcut must use Ctrl + Shift + S');
@@ -190,6 +190,16 @@ const dockTokenSource = server.slice(dockTokenStart, dockTokenEnd);
 const extractDockNameTokenForTest = new Function('firstNonEmptyString', `${dockTokenSource}; return extractDockNameToken;`)((value) => String(value || '').trim());
 assert(extractDockNameTokenForTest('dock34') === 'DOCK34' && extractDockNameTokenForTest('Go to the door at Dock 40') === 'DOCK40', 'dock-name parser must normalize compact and assignment-text dock names');
 assert(extractDockNameTokenForTest('Go to the door between docks 165 & 166.') === '', 'ambiguous between-docks instructions must not become one numeric dock');
+const readbackStart = server.indexOf('function collectYmsReadbackLoadIds(value)');
+const readbackEnd = server.indexOf('function formatNotificationLines', readbackStart);
+const readbackSource = server.slice(readbackStart, readbackEnd);
+const extractYmsReadbackForTest = new Function('asObject', 'validationIds', 'firstNonEmptyString', `${readbackSource}; return extractYmsReadback;`)(
+  (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {},
+  (...values) => [...new Set(values.flat(Infinity).map((value) => String(value || '').trim()).filter(Boolean))],
+  (...values) => values.map((value) => String(value || '').trim()).find(Boolean) || ''
+);
+const manualReadback = extractYmsReadbackForTest({ data: { outboundTask: { taskId: 'TASK-1', plannedLocationId: '34', taskStatus: 'CLOSED', timeStatus: 'COMPLETED', loadIds: ['LOAD-1'] }, entryTicketView: { entryStatus: 'DOCK_CHECKED_OUT', loadTaskId: 'TASK-1', outboundLoadIds: ['LOAD-1'], pickUpLocationId: '34', createdSource: 'SELF_CHECKIN' }, outboundTripInfo: { loadIds: ['LOAD-1'] } } }, 'LOAD-1');
+assert(manualReadback.windowCheckinCompleted && manualReadback.wiseSynced && manualReadback.loadTaskId === 'TASK-1' && manualReadback.dockId === '34', 'manual/later YMS readback must validate the existing task and completed Window Check-In');
 assert(server.includes('/wms-bam/wms-location/search') && server.includes('types: ["DOCK"]') && server.includes('statuses: ["USABLE"]'), 'dock-name fallback must verify a usable WMS DOCK location');
 assert(server.includes('reason=non_numeric_id') && server.includes('reason=location_is_not_dock') && server.includes('source=${source} dockId=${dockId}'), 'dock resolution must log chosen source and rejected candidates');
 assert(server.includes('async function resolveWiseAssignee(etNumber, payload, tripInfo, authHeader)'), 'server must resolve explicit username/name to a WISE assignee ID');
@@ -223,7 +233,21 @@ assert(compactApp.includes('entryTask: data.entryTask || "", entryTaskTag: data.
 assert(compactApp.includes('dockName: etStatus.assignedDockName || requestedDockName || assignment || ""'), 'Window Check-In request must include dock name fallback');
 assert(compactApp.includes('assigneeUserId: etStatus.assignedOperatorId || requestedAssigneeUserId') && compactApp.includes('assigneeUserName: etStatus.assignedOperator || requestedAssigneeUserName'), 'Window Check-In request must include selected/default assignee context');
 assert(compactApp.includes('username: requestedUsername'), 'frontend must pass username context consistently');
-// strictet56 centralized Validation Engine lock.
+assert(app.includes('controller.abort(), 60000') && app.includes('controller.abort(), 45000'), 'ET and Window Check-In requests must allow strict task reuse/readback finalization to complete');
+// strictet57 idempotent Load Task reuse and finalization lock.
+assert(server.includes('async function findExistingLoadTask(authHeader, expected = {})'), 'server must centralize active existing Load Task discovery');
+assert(server.includes('{ entryIds: [entryId] }') && server.includes('{ loadIds: [loadId] }'), 'existing Load Task discovery must search by ET and LOAD');
+assert(server.includes('entryTicketView.entryStatus') && server.includes('entryTicketView.loadTaskId') && server.includes('outboundTask?.taskId'), 'YMS readback must detect production nested status and task IDs');
+const createWrapperStart = server.indexOf('async function createWmsLoadTask(authHeader, params)');
+const createWrapperEnd = server.indexOf('async function autoCreateLoadTask', createWrapperStart);
+const createWrapper = server.slice(createWrapperStart, createWrapperEnd);
+assert(createWrapper.indexOf('findExistingLoadTask(authHeader') >= 0 && createWrapper.indexOf('findExistingLoadTask(authHeader') < createWrapper.indexOf('createWmsLoadTaskRequest(authHeader, params)'), 'duplicate prevention must search before any WMS Load Task create request');
+assert(server.includes('Load Task CREATE skipped: duplicate prevention') && server.includes('Load Task REUSED'), 'server must log duplicate prevention and task reuse');
+assert(server.includes('manual completion detected') && server.includes('taskSource = "manual_readback"'), 'manual Window Check-In completion must be detected and evidenced');
+assert(server.includes('taskSource: firstNonEmptyString(context.taskSource, taskSource)') && server.includes('taskStatus: firstNonEmptyString(context.taskStatus, taskStatus)'), 'Validation Engine response must expose existing/manual task evidence');
+assert(server.includes('Load Task existe, pero Window Check-In no fue confirmado. El guardia debe usar Save and Continue o revisar dock/usuario.'), 'partial completion must show the required existing-task guidance');
+assert(server.includes('taskId: loadTaskId') && server.includes('/entry-ticket/task-entry-checkin') && server.includes('/entry-ticket/task-info-checkin'), 'existing task ID must be reused for both YMS finalization calls');
+// strictet57 centralized Validation Engine lock.
 const validationKeys = ['etCreated', 'dnLinked', 'loadLinked', 'validDock', 'loadTaskCreated', 'windowCheckinCompleted', 'qrCreated', 'wiseSynced'];
 assert(server.includes('const CHECKIN_VALIDATION_LABELS = Object.freeze({'), 'server must define centralized bilingual validation labels');
 assert(server.includes('function buildCheckinValidation(context = {})'), 'server must expose the centralized Validation Engine helper');
@@ -281,4 +305,4 @@ assert(!read('staging-door-config.js').includes('Fontana'), 'staging config must
 assert(!read('staging-door-config.js').includes('SharkNinja'), 'staging config must not contain stale SharkNinja comments');
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: strictet56 Valley View assignment-ready validation behavior is locked.');
+console.log('Regression guard passed: strictet57 Valley View idempotent Load Task finalization is locked.');

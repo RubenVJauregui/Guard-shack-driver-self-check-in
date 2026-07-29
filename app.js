@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet56";
+const APP_BUILD_VERSION = "strictet57";
 const CHECKIN_VALIDATION_STEPS = Object.freeze([
   { key: "etCreated", label: { es: "ET creado", en: "ET created" } },
   { key: "dnLinked", label: { es: "DN vinculado", en: "DN linked" } },
@@ -672,7 +672,7 @@ async function completeCheckin() {
   if (!etNumber) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
+      const timeout = setTimeout(() => controller.abort(), 60000);
       const etRes = await fetch("/api/yms-entry-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -876,7 +876,7 @@ async function completeCheckin() {
   if (wmsResult.loadId && etNumber && !isDropOffEmpty() && !isPickupEmpty()) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 12000);
+      const timeout = setTimeout(() => controller.abort(), 45000);
       const wcRes = await fetch("/api/yms-window-checkin-complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
