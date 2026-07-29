@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet55";
+const APP_BUILD_VERSION = "strictet56";
 const CHECKIN_VALIDATION_STEPS = Object.freeze([
   { key: "etCreated", label: { es: "ET creado", en: "ET created" } },
   { key: "dnLinked", label: { es: "DN vinculado", en: "DN linked" } },
@@ -661,6 +661,12 @@ async function completeCheckin() {
     wmsResult.orderId
   ].map((value) => String(value || "").trim()).filter(Boolean))];
   const orderId = orderIds[0] || "";
+  const portalDockAssignment = getDoorAssignment(resolvedCustomer);
+  const requestedAssigneeUserId = String(data.assigneeUserId || "").trim();
+  const requestedAssigneeUserName = String(data.assigneeUserName || data.username || "").trim();
+  const requestedUsername = String(data.username || data.assigneeUserName || "").trim();
+  const requestedDockId = String(wmsResult.dockId || data.dockId || "").trim();
+  const requestedDockName = String(wmsResult.dockName || data.dockName || portalDockAssignment || "").trim();
 
   // Create and confirm the YMS ET before computing or showing any door/dock assignment.
   if (!etNumber) {
@@ -676,6 +682,14 @@ async function completeCheckin() {
           entryTaskTag: data.entryTask || "",
           orderId,
           orderIds,
+          loadId: wmsResult.loadId || "",
+          loadNo: wmsResult.loadNo || "",
+          dockId: requestedDockId,
+          dockName: requestedDockName,
+          doorAssignment: portalDockAssignment,
+          assigneeUserId: requestedAssigneeUserId,
+          assigneeUserName: requestedAssigneeUserName,
+          username: requestedUsername,
           driverInfo: {
             driverPhone: data.driverPhone || data.phone || "",
             firstName: data.firstName || "",
@@ -705,8 +719,12 @@ async function completeCheckin() {
             orderIds,
             loadId: wmsResult.loadId || "",
             loadNo: wmsResult.loadNo || "",
-            dockId: wmsResult.dockId || "",
-            dockName: wmsResult.dockName || "",
+            dockId: requestedDockId,
+            dockName: requestedDockName,
+            doorAssignment: portalDockAssignment,
+            assigneeUserId: requestedAssigneeUserId,
+            assigneeUserName: requestedAssigneeUserName,
+            username: requestedUsername,
             receiptId: wmsResult.receiptId || "",
             poNo: wmsResult.poNo || "",
             referenceNo: wmsResult.referenceNo || data.referenceNo || "",
@@ -864,6 +882,8 @@ async function completeCheckin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           etNumber,
+          entryTask: data.entryTask || "",
+          entryTaskTag: data.entryTask || "",
           orderId,
           orderIds,
           loadId: wmsResult.loadId || "",
@@ -873,10 +893,13 @@ async function completeCheckin() {
           receiptId: wmsResult.receiptId || "",
           poNo: wmsResult.poNo || "",
           referenceNo: wmsResult.referenceNo || data.referenceNo || "",
-          dockId: etStatus.assignedDockId || wmsResult.dockId || doorResult.stagedLocation || "",
+          dockId: etStatus.assignedDockId || requestedDockId || doorResult.stagedLocation || "",
+          dockName: etStatus.assignedDockName || requestedDockName || assignment || "",
+          doorAssignment: assignment || portalDockAssignment,
           loadTaskId: etStatus.loadTaskId || "",
-          assigneeUserId: "",
-          assigneeUserName: "",
+          assigneeUserId: etStatus.assignedOperatorId || requestedAssigneeUserId,
+          assigneeUserName: etStatus.assignedOperator || requestedAssigneeUserName,
+          username: requestedUsername,
           driverInfo: {
             driverPhone: data.driverPhone || data.phone || "",
             firstName: data.firstName || "",
@@ -1121,7 +1144,9 @@ function renderCheckinValidation(validation) {
     return;
   }
 
-  validationSummary.textContent = `Check-in pendiente de validación: ${failedSteps.length} paso${failedSteps.length === 1 ? "" : "s"} requiere${failedSteps.length === 1 ? "" : "n"} atención. Muestre esta pantalla al personal del almacén.`;
+  const guidanceStep = failedSteps.find((step) => step.key === "validDock") || failedSteps[0];
+  const guidance = String(guidanceStep?.details || "Muestre esta pantalla al personal del almacén.").trim();
+  validationSummary.textContent = `Check-in pendiente de validación: ${failedSteps.length} paso${failedSteps.length === 1 ? "" : "s"} requiere${failedSteps.length === 1 ? "" : "n"} atención. ${guidance}`;
   if (completeEyebrow) completeEyebrow.textContent = "Validación pendiente";
   if (completeHeading) completeHeading.textContent = "Check-in requires review";
   if (completeSuccessMark) completeSuccessMark.textContent = "!";

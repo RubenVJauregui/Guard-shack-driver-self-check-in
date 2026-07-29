@@ -136,7 +136,11 @@ function buildCheckinValidation(context = {}) {
     etCreated: facts.etCreated ? `ET ${etNumber} confirmado.` : "El ET no fue confirmado.",
     dnLinked: facts.dnLinked ? `DN/orden confirmada: ${orderIds.join(", ")}.` : "No se confirmó una DN/orden vinculada.",
     loadLinked: facts.loadLinked ? `LOAD ${loadId} confirmado en el readback.` : "WISE/YMS no confirmó el LOAD esperado.",
-    validDock: facts.validDock ? `Dock/location ID ${dockId} verificado.` : "No se confirmó un dock/location ID numérico válido.",
+    validDock: facts.validDock
+      ? `Dock/location ID ${dockId} verificado.`
+      : (facts.loadLinked
+        ? "LOAD vinculado al ET, pero falta Dock válido para crear Load Task. Seleccione/asigne un dock."
+        : "No se confirmó un dock/location ID numérico válido."),
     loadTaskCreated: facts.loadTaskCreated ? `Load Task ${loadTaskId} confirmado.` : "No se confirmó la creación o reutilización del Load Task.",
     windowCheckinCompleted: facts.windowCheckinCompleted ? `Window Check-In confirmado${entryStatus ? ` con estado ${entryStatus}` : ""}.` : "Window Check-In todavía no fue confirmado por readback.",
     qrCreated: facts.qrCreated ? "Identidad guardada y QR preparado." : "El QR todavía no fue confirmado por el portal.",
@@ -172,18 +176,48 @@ function logCheckinValidation(source, etNumber, validation) {
   console.log(`[Validation Engine] source=${source} et=${etNumber || "none"} passed=${validation.passed} ${summary}`);
 }
 
+function collectYmsReadbackLoadIds(value) {
+  const ids = [];
+  const append = (candidate) => {
+    if (Array.isArray(candidate)) {
+      candidate.forEach(append);
+      return;
+    }
+    if (candidate && typeof candidate === "object") {
+      ids.push(...validationIds(candidate.loadId, candidate.id, candidate.loadNo, candidate.loadNumber));
+      return;
+    }
+    ids.push(...validationIds(candidate));
+  };
+  const visit = (candidate) => {
+    if (!candidate || typeof candidate !== "object") return;
+    if (Array.isArray(candidate)) {
+      candidate.forEach(visit);
+      return;
+    }
+    Object.entries(candidate).forEach(([key, child]) => {
+      if (/^(outboundLoadIds|outboundLoads|outboundLoadInfos|loadIds|loads)$/i.test(key)) append(child);
+      if (child && typeof child === "object") visit(child);
+    });
+  };
+  visit(value);
+  return [...new Set(ids)];
+}
+
 function extractYmsReadback(detail, expectedLoadId) {
   const value = asObject(detail?.data || detail);
-  const outboundTask = value.outboundTask || value.task || null;
-  const rawLoads = value.outboundLoads || value.loads || value.activity?.loads || [];
-  const loads = Array.isArray(rawLoads) ? rawLoads : [];
+  const activity = asObject(value.activity);
+  const outboundTask = value.outboundTask || value.task || activity.outboundTask || activity.task || null;
+  const loadIds = collectYmsReadbackLoadIds(value);
   const expected = firstNonEmptyString(expectedLoadId);
-  const loadLinked = Boolean(expected && loads.some((load) => validationIds(load?.loadId, load?.id, load?.loadNo).includes(expected)));
+  const loadLinked = Boolean(expected && loadIds.includes(expected));
   const entryStatus = firstNonEmptyString(value.entryStatus, value.status);
   const windowCheckinCompleted = /WINDOW_CHECKED_IN|DOCK_CHECKED_IN|IN_YARD|LOADING/i.test(entryStatus);
   return {
     entryStatus,
+    loadIds,
     loadLinked,
+    outboundTripAttached: loadLinked,
     taskPresent: Boolean(outboundTask),
     dockId: firstNonEmptyString(outboundTask?.assignLocationId, outboundTask?.dockId, value.dockId, value.locationId),
     loadTaskId: firstNonEmptyString(value.loadTaskId, outboundTask?.taskId),
@@ -729,6 +763,8 @@ function attachTripInfo(ymsToken, entryId, tripInfo) {
       }
     });
 
+    console.log(`[YMS ET] trip-info-checkin ${isInbound ? "inbound" : "outbound"} ET=${entryId} loadIds=${loadIds.join(",") || "none"} receiptIds=${receiptIds.join(",") || "none"} orderIds=${validationIds(tripInfo.orderIds, tripInfo.orderId).join(",") || "none"}`);
+
     const mod = url.protocol === "https:" ? https : http;
     const req = mod.request(url, {
       method: "POST",
@@ -1193,7 +1229,21 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     try {
       const body = await readBody(req);
       const payload = asObject(JSON.parse(body || "{}"));
-      const tripInfo = asObject(payload.tripInfo);
+      const tripPayload = asObject(payload.tripInfo);
+      const tripInfo = {
+        ...tripPayload,
+        orderId: firstNonEmptyString(tripPayload.orderId, payload.orderId),
+        orderIds: validationIds(tripPayload.orderIds, tripPayload.orderId, payload.orderIds, payload.orderId),
+        loadId: firstNonEmptyString(tripPayload.loadId, payload.loadId),
+        loadNo: firstNonEmptyString(tripPayload.loadNo, payload.loadNo),
+        dockId: firstNonEmptyString(tripPayload.dockId, payload.dockId),
+        dockName: firstNonEmptyString(tripPayload.dockName, payload.dockName, tripPayload.doorAssignment, payload.doorAssignment),
+        doorAssignment: firstNonEmptyString(tripPayload.doorAssignment, payload.doorAssignment, payload.dockName),
+        loadTaskId: firstNonEmptyString(tripPayload.loadTaskId, payload.loadTaskId),
+        assigneeUserId: firstNonEmptyString(tripPayload.assigneeUserId, payload.assigneeUserId),
+        assigneeUserName: firstNonEmptyString(tripPayload.assigneeUserName, payload.assigneeUserName),
+        username: firstNonEmptyString(tripPayload.username, payload.username)
+      };
       const entryTaskTag = firstNonEmptyString(
         payload.entryTask,
         payload.entryTaskTag,
@@ -1202,6 +1252,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         tripInfo.entryTaskTag,
         tripInfo.loadTypeGroup
       );
+      console.log(`[YMS ET] Resolved business context: DN=${tripInfo.orderIds.join(",") || "none"} LOAD=${tripInfo.loadId || "none"} loadNo=${tripInfo.loadNo || "none"} dockId=${tripInfo.dockId || "none"} dockName=${tripInfo.dockName || "none"}`);
       entryValidationContext = {
         orderIds: validationIds(tripInfo.orderIds, tripInfo.orderId, payload.orderIds, payload.orderId),
         loadId: firstNonEmptyString(tripInfo.loadId),
@@ -1282,189 +1333,208 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         console.log(`[YMS ET] Complete check-in failed for ${etNumber}: ${checkinCompleteError}`);
       }
 
-      // Step 5: LIVE LOAD SOP — Create WMS Load Task first, then YMS task-entry-checkin, then finalize
+      // Step 5: Attach outbound LOAD, resolve assignment, create/reuse WMS Load Task, then finalize YMS tasks.
       let activityLoadAdded = false;
       let activityLoadError = "";
       let windowCheckinCompleted = false;
       let windowCheckinError = "";
       let createdLoadTaskId = tripInfo.loadTaskId || "";
-      let assignedDockId = "";
-      let assignedDockName = tripInfo.dockName || "";
+      let assignedDockId = numericDockId(tripInfo.dockId);
+      let assignedDockName = tripInfo.dockName || tripInfo.doorAssignment || "";
       let validationEntryStatus = "";
       let validationLoadLinked = false;
+      let validationLoadIds = [];
       let validationTaskPresent = false;
       let validationWiseSynced = false;
+      let selectedAssigneeId = AUTO_OPERATOR_ID;
+      let selectedAssigneeName = AUTO_OPERATOR_NAME;
+      let selectedAssigneeSource = "default_operator";
       const isOutbound = tripInfo.direction !== "inbound";
       const hasLoad = Boolean(tripInfo.loadId);
-      const isPreload = /preload|pick.?up.?preload/i.test(entryTaskTag || "");
-      const loadMode = isPreload ? "PRE_LOAD" : "LIVE_LOAD";
-      const modeLabel = isPreload ? "Preload" : "Live Load";
+      const loadMode = resolveLoadMode(entryTaskTag);
+      const modeLabel = loadMode === "PRE_LOAD" ? "Preload" : "Live Load";
       const inYardAction = /live.load|load|preload/i.test(entryTaskTag || "")
         ? (isOutbound ? "PRE_LOAD" : "DROP_OFF_RECEIVING")
         : (tripInfo.receiptId ? "DROP_OFF_RECEIVING" : "");
 
       if (checkinCompleted && (hasLoad || tripInfo.receiptId)) {
         const wmsToken = await getWmsBearerToken().catch(() => null);
+        const wmsAuthHeader = wmsToken ? `Bearer ${wmsToken}` : "";
+        const selectedAssignee = await resolveWiseAssignee(etNumber, payload, tripInfo, wmsAuthHeader);
+        selectedAssigneeId = selectedAssignee.assigneeUserId;
+        selectedAssigneeName = selectedAssignee.assigneeUserName;
+        selectedAssigneeSource = selectedAssignee.source;
 
-        // Phase A: Resolve a verified numeric dock/location ID and reuse any existing load task.
-        if (tripInfo.loadId && wmsToken) {
+        // Phase A: Persist and verify outboundTripInfo.loadIds before Load Task creation.
+        if (isOutbound && hasLoad) {
+          const attachment = await ensureOutboundLoadAttached(ymsToken, etNumber, tripInfo);
+          validationEntryStatus = attachment.readback.entryStatus || validationEntryStatus;
+          validationLoadLinked = attachment.readback.loadLinked;
+          validationLoadIds = attachment.readback.loadIds;
+          validationTaskPresent = attachment.readback.taskPresent;
+          activityLoadAdded = validationLoadLinked;
+          if (!validationLoadLinked) {
+            activityLoadError = `LOAD ${tripInfo.loadId} was sent to the ET, but Activity/outboundLoadIds readback did not confirm it.`;
+          }
+          console.log(`[YMS ET] Outbound LOAD attachment result for ${etNumber}: DN=${tripInfo.orderIds.join(",") || "none"} LOAD=${tripInfo.loadId} source=${attachment.source} attached=${validationLoadLinked} readbackLoadIds=${validationLoadIds.join(",") || "none"}`);
+        }
+
+        // Phase B: Resolve verified numeric dock/location and any existing Load Task.
+        if (tripInfo.loadId && wmsAuthHeader) {
           try {
-            const dockResolution = await resolveEtDock(etNumber, tripInfo, `Bearer ${wmsToken}`);
+            const dockResolution = await resolveEtDock(etNumber, tripInfo, wmsAuthHeader);
             assignedDockId = dockResolution.dockId;
             assignedDockName = dockResolution.dockName || assignedDockName;
             if (!createdLoadTaskId && dockResolution.loadTaskId) createdLoadTaskId = dockResolution.loadTaskId;
-          } catch (e) {
-            console.log(`[YMS ET] Dock resolution failed for ${etNumber}: ${e.message}`);
+          } catch (err) {
+            console.log(`[YMS ET] Dock resolution failed for ${etNumber}: ${err.message}`);
           }
         }
 
-        if (!AUTO_OPERATOR_ID) {
-          windowCheckinError = "No default operator configured. Guard must assign user and dock manually.";
+        if (isOutbound && hasLoad && !validationLoadLinked) {
+          windowCheckinError = `LOAD ${tripInfo.loadId} no fue confirmado en Activity/outboundLoadIds. Revise la asociación del LOAD antes de crear el Load Task.`;
+        } else if (!selectedAssigneeId) {
+          windowCheckinError = "No se pudo validar el usuario asignado. Seleccione/asigne un usuario WISE válido.";
         } else if (!assignedDockId) {
-          windowCheckinError = "LOAD linked to ET, but WISE did not return a verified numeric dock/location ID. Load Task could not be created automatically; guard must assign the dock in WISE.";
+          windowCheckinError = "LOAD vinculado al ET, pero falta Dock válido para crear Load Task. Seleccione/asigne un dock.";
         } else {
-          // Phase B: Materialize WMS Load Task BEFORE any YMS finalization
-          if (isOutbound && hasLoad && !createdLoadTaskId && wmsToken) {
-            try {
-              const ltResult = await createWmsLoadTask(`Bearer ${wmsToken}`, {
-                dockId: assignedDockId,
-                loadIds: [tripInfo.loadId],
-                assigneeUserId: AUTO_OPERATOR_ID,
-                entryId: etNumber,
-                loadMode,
-                note: `Auto ${modeLabel} SOP: ET=${etNumber} pickup=${tripInfo.loadNo || tripInfo.loadId} dock=${assignedDockId}`
-              });
-              if (ltResult.taskId) {
-                createdLoadTaskId = ltResult.taskId;
-                console.log(`[YMS ET] WMS Load Task CREATED (${modeLabel}): ${createdLoadTaskId} for ET=${etNumber} loadId=${tripInfo.loadId}`);
-              } else {
-                activityLoadError = `WMS Load Task creation (${modeLabel}) failed: ${ltResult.error || "unknown"}`;
-                console.log(`[YMS ET] WMS Load Task FAILED (${modeLabel}) for ${etNumber}: ${activityLoadError}`);
+          // Phase C: Create/reuse WMS Load Task only after LOAD attachment and numeric dock validation.
+          if (isOutbound && hasLoad && !createdLoadTaskId) {
+            if (!wmsAuthHeader) {
+              activityLoadError = "WMS authentication is unavailable for Load Task creation.";
+            } else {
+              try {
+                const ltResult = await createWmsLoadTask(wmsAuthHeader, {
+                  dockId: assignedDockId,
+                  loadIds: [tripInfo.loadId],
+                  assigneeUserId: selectedAssigneeId,
+                  entryId: etNumber,
+                  loadMode,
+                  note: `Auto ${modeLabel} SOP: ET=${etNumber} pickup=${tripInfo.loadNo || tripInfo.loadId} dock=${assignedDockName || assignedDockId} assignee=${selectedAssigneeName}`
+                });
+                if (ltResult.taskId) {
+                  createdLoadTaskId = ltResult.taskId;
+                  console.log(`[YMS ET] WMS Load Task CREATED (${modeLabel}): taskId=${createdLoadTaskId} ET=${etNumber} DN=${tripInfo.orderIds.join(",") || "none"} LOAD=${tripInfo.loadId} dockId=${assignedDockId} dockName=${assignedDockName || "none"} assigneeId=${selectedAssigneeId} assigneeName=${selectedAssigneeName}`);
+                } else {
+                  activityLoadError = `WMS Load Task creation (${modeLabel}) failed: ${ltResult.error || "unknown"}`;
+                  console.log(`[YMS ET] WMS Load Task FAILED (${modeLabel}) for ${etNumber}: ${activityLoadError}`);
+                }
+              } catch (ltErr) {
+                activityLoadError = `WMS Load Task error: ${ltErr.message}`;
+                console.log(`[YMS ET] WMS Load Task error for ${etNumber}: ${ltErr.message}`);
               }
-            } catch (ltErr) {
-              activityLoadError = `WMS Load Task error: ${ltErr.message}`;
-              console.log(`[YMS ET] WMS Load Task error for ${etNumber}: ${ltErr.message}`);
             }
           } else if (createdLoadTaskId) {
-            console.log(`[YMS ET] Using existing WMS Load Task for ${etNumber}: ${createdLoadTaskId}`);
+            console.log(`[YMS ET] WMS Load Task REUSED: taskId=${createdLoadTaskId} ET=${etNumber} LOAD=${tripInfo.loadId} dockId=${assignedDockId} assigneeId=${selectedAssigneeId}`);
           }
 
-          // Phase C: YMS task-entry-checkin — materialize the in-yard task
-          let taskEntryDone = false;
-          let taskEntryError = "";
-          if (isOutbound && hasLoad) {
-            const taskEntryBody = {
-              entryId: etNumber,
-              loadIds: [tripInfo.loadId],
-              assignLocationId: assignedDockId,
-              assigneeUserName: AUTO_OPERATOR_NAME,
-              inYardAction: inYardAction || "PRE_LOAD",
-              ...(createdLoadTaskId ? { taskId: createdLoadTaskId } : {})
-            };
-            console.log(`[YMS ET] task-entry-checkin PAYLOAD for ${etNumber}: ${JSON.stringify(taskEntryBody)}`);
-
-            try {
-              await ymsPostRequest(ymsToken, "/entry-ticket/task-entry-checkin", taskEntryBody);
-              taskEntryDone = true;
-              console.log(`[YMS ET] task-entry-checkin (${modeLabel}) completed for ${etNumber} loadIds=[${tripInfo.loadId}]`);
-            } catch (err) {
-              taskEntryError = err.message || "task-entry-checkin failed";
-              console.log(`[YMS ET] task-entry-checkin (${modeLabel}) FAILED for ${etNumber}: ${taskEntryError}`);
+          if (isOutbound && hasLoad && !createdLoadTaskId) {
+            windowCheckinError = activityLoadError || "LOAD vinculado y Dock válido, pero no se confirmó el Load Task.";
+          } else {
+            // Phase D: YMS task-entry-checkin with verified LOAD, dock, assignee, and Load Task.
+            let taskEntryDone = false;
+            let taskEntryError = "";
+            if (isOutbound && hasLoad) {
+              const taskEntryBody = {
+                entryId: etNumber,
+                loadIds: [tripInfo.loadId],
+                assignLocationId: assignedDockId,
+                assigneeUserName: selectedAssigneeName,
+                inYardAction: inYardAction || "PRE_LOAD",
+                ...(createdLoadTaskId ? { taskId: createdLoadTaskId } : {})
+              };
+              console.log(`[YMS ET] task-entry-checkin PAYLOAD for ${etNumber}: ${JSON.stringify(taskEntryBody)}`);
+              try {
+                await ymsPostRequest(ymsToken, "/entry-ticket/task-entry-checkin", taskEntryBody);
+                taskEntryDone = true;
+                console.log(`[YMS ET] task-entry-checkin (${modeLabel}) completed for ${etNumber} loadIds=[${tripInfo.loadId}] dockId=${assignedDockId} assignee=${selectedAssigneeName}`);
+              } catch (err) {
+                taskEntryError = err.message || "task-entry-checkin failed";
+                console.log(`[YMS ET] task-entry-checkin (${modeLabel}) FAILED for ${etNumber}: ${taskEntryError}`);
+              }
+            } else if (tripInfo.receiptId) {
+              const taskEntryBody = {
+                entryId: etNumber,
+                receiptIds: [tripInfo.receiptId],
+                assignLocationId: assignedDockId,
+                assigneeUserName: selectedAssigneeName,
+                inYardAction: "DROP_OFF_RECEIVING"
+              };
+              console.log(`[YMS ET] task-entry-checkin (inbound) PAYLOAD for ${etNumber}: ${JSON.stringify(taskEntryBody)}`);
+              try {
+                await ymsPostRequest(ymsToken, "/entry-ticket/task-entry-checkin", taskEntryBody);
+                taskEntryDone = true;
+              } catch (err) {
+                taskEntryError = err.message || "task-entry-checkin failed";
+                console.log(`[YMS ET] task-entry-checkin (inbound) FAILED for ${etNumber}: ${taskEntryError}`);
+              }
             }
-          } else if (tripInfo.receiptId) {
-            const taskEntryBody = {
-              entryId: etNumber,
-              receiptIds: [tripInfo.receiptId],
-              assignLocationId: assignedDockId,
-              assigneeUserName: AUTO_OPERATOR_NAME,
-              inYardAction: "DROP_OFF_RECEIVING"
-            };
-            console.log(`[YMS ET] task-entry-checkin (inbound) PAYLOAD for ${etNumber}: ${JSON.stringify(taskEntryBody)}`);
-            try {
-              await ymsPostRequest(ymsToken, "/entry-ticket/task-entry-checkin", taskEntryBody);
-              taskEntryDone = true;
-              console.log(`[YMS ET] task-entry-checkin (inbound) completed for ${etNumber} receiptIds=[${tripInfo.receiptId}]`);
-            } catch (err) {
-              taskEntryError = err.message || "task-entry-checkin failed";
-              console.log(`[YMS ET] task-entry-checkin (inbound) FAILED for ${etNumber}: ${taskEntryError}`);
+
+            // Phase E: task-info-checkin finalizes outbound trip and assignment.
+            let taskInfoDone = false;
+            let taskInfoError = "";
+            const taskInfoBody = { entryId: etNumber, ...(tripInfo.customerId ? { customerId: tripInfo.customerId } : {}) };
+            if (isOutbound && hasLoad) {
+              taskInfoBody.outboundTripInfo = { customerId: tripInfo.customerId || "", loadIds: [tripInfo.loadId] };
+              taskInfoBody.outboundTask = {
+                taskId: createdLoadTaskId,
+                assignLocationId: assignedDockId,
+                assigneeUserId: selectedAssigneeId,
+                assigneeUserName: selectedAssigneeName,
+                description: `Auto SOP: ${modeLabel} task=${createdLoadTaskId} dock=${assignedDockName || assignedDockId}`
+              };
+            } else if (tripInfo.receiptId) {
+              taskInfoBody.inboundTripInfo = { customerId: tripInfo.customerId || "", receiptIds: [tripInfo.receiptId] };
+              taskInfoBody.inboundTask = {
+                assignLocationId: assignedDockId,
+                assigneeUserId: selectedAssigneeId,
+                assigneeUserName: selectedAssigneeName,
+                description: `Inbound receipt ${tripInfo.receiptId}`
+              };
             }
-          }
 
-          // Phase D: task-info-checkin — finalize window check-in with outbound task assignment
-          let taskInfoDone = false;
-          let taskInfoError = "";
-          const taskInfoBody = { entryId: etNumber, ...(tripInfo.customerId ? { customerId: tripInfo.customerId } : {}) };
-          if (isOutbound && hasLoad) {
-            taskInfoBody.outboundTripInfo = { customerId: tripInfo.customerId || "", loadIds: [tripInfo.loadId] };
-            taskInfoBody.outboundTask = {
-              assignLocationId: assignedDockId,
-              assigneeUserId: AUTO_OPERATOR_ID,
-              assigneeUserName: AUTO_OPERATOR_NAME,
-              description: `Auto SOP: ${modeLabel} task=${createdLoadTaskId || "new"} dock=${assignedDockId}`
-            };
-          } else if (tripInfo.receiptId) {
-            taskInfoBody.inboundTripInfo = { customerId: tripInfo.customerId || "", receiptIds: [tripInfo.receiptId] };
-            taskInfoBody.inboundTask = {
-              assignLocationId: assignedDockId,
-              assigneeUserId: AUTO_OPERATOR_ID,
-              assigneeUserName: AUTO_OPERATOR_NAME,
-              description: `Inbound receipt ${tripInfo.receiptId}`
-            };
-          }
-
-          console.log(`[YMS ET] task-info-checkin PAYLOAD for ${etNumber}: ${JSON.stringify(taskInfoBody)}`);
-          try {
-            await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", taskInfoBody);
-            taskInfoDone = true;
-            console.log(`[YMS ET] task-info-checkin (${modeLabel}) completed for ${etNumber}`);
-          } catch (err) {
-            taskInfoError = err.message || "task-info-checkin failed";
-            console.log(`[YMS ET] task-info-checkin (${modeLabel}) FAILED for ${etNumber}: ${taskInfoError}`);
-          }
-
-          // Phase E: Readback verification with retries
-          let verified = false;
-          let verifyStatus = "";
-          for (let attempt = 1; attempt <= 3; attempt++) {
+            console.log(`[YMS ET] task-info-checkin PAYLOAD for ${etNumber}: ${JSON.stringify(taskInfoBody)}`);
             try {
-              if (attempt > 1) await new Promise((r) => setTimeout(r, 1500 * attempt));
-              const detail = await ymsGetRequest(ymsToken, `/entry-ticket/${etNumber}/window-checkin-detail`);
-              const readback = extractYmsReadback(detail, tripInfo.loadId);
+              await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", taskInfoBody);
+              taskInfoDone = true;
+              console.log(`[YMS ET] task-info-checkin (${modeLabel}) completed for ${etNumber}`);
+            } catch (err) {
+              taskInfoError = err.message || "task-info-checkin failed";
+              console.log(`[YMS ET] task-info-checkin (${modeLabel}) FAILED for ${etNumber}: ${taskInfoError}`);
+            }
+
+            // Phase F: strict readback verification of Activity/outboundLoadIds and task assignment.
+            let verified = false;
+            let verifyStatus = "";
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+              const readback = await readYmsCheckinReadback(ymsToken, etNumber, tripInfo.loadId);
               validationEntryStatus = readback.entryStatus || validationEntryStatus;
               validationLoadLinked = readback.loadLinked;
+              validationLoadIds = readback.loadIds;
               validationTaskPresent = readback.taskPresent;
               validationWiseSynced = Boolean(readback.wiseSynced && createdLoadTaskId && assignedDockId);
-
-              console.log(`[YMS ET] Readback #${attempt} for ${etNumber}: status=${readback.entryStatus || "unknown"} hasLoad=${readback.loadLinked} hasTask=${readback.taskPresent} isDone=${readback.windowCheckinCompleted} loadTask=${createdLoadTaskId || "none"}`);
-
+              console.log(`[YMS ET] Readback #${attempt} for ${etNumber}: status=${readback.entryStatus || "unknown"} outboundLoadIds=${readback.loadIds.join(",") || "none"} expectedLoad=${tripInfo.loadId} hasLoad=${readback.loadLinked} hasTask=${readback.taskPresent} isDone=${readback.windowCheckinCompleted} loadTask=${createdLoadTaskId || "none"}`);
               if (readback.windowCheckinCompleted && readback.loadLinked && readback.taskPresent && createdLoadTaskId && assignedDockId) {
                 verified = true;
                 verifyStatus = readback.entryStatus || "WINDOW_CHECKED_IN";
                 break;
               }
               verifyStatus = readback.entryStatus;
-            } catch (readErr) {
-              console.log(`[YMS ET] Readback #${attempt} failed: ${readErr.message}`);
             }
-          }
 
-          if (verified) {
-            windowCheckinCompleted = true;
-            activityLoadAdded = true;
-            console.log(`[YMS ET] VERIFIED ${etNumber} mode=${modeLabel}: status=${verifyStatus} loadTask=${createdLoadTaskId} dock=${assignedDockId} operator=${AUTO_OPERATOR_NAME}`);
-          } else if (taskInfoDone && createdLoadTaskId) {
-            windowCheckinCompleted = false;
-            activityLoadAdded = true;
-            windowCheckinError = `LOAD vinculado, Load Task ${createdLoadTaskId} creado (${modeLabel}), pero YMS no confirmó Window Check-In (status=${verifyStatus || "unknown"}). Guard must open Window Check-In and Save and Continue.`;
-            console.log(`[YMS ET] PARTIAL ${etNumber} mode=${modeLabel}: task created=${createdLoadTaskId} but readback not final. status=${verifyStatus}`);
-          } else if (taskInfoDone && !createdLoadTaskId) {
-            windowCheckinCompleted = false;
-            activityLoadAdded = true;
-            windowCheckinError = `LOAD vinculado, pero Load Task de ${modeLabel} no fue creado/activado; check-in incompleto. El guardia debe crear/confirmar Load Task en WISE/YMS.`;
-            console.log(`[YMS ET] PARTIAL ${etNumber} mode=${modeLabel}: task-info accepted but no load task materialized`);
-          } else {
-            activityLoadError = taskInfoError || taskEntryError || "Final check-in steps did not complete.";
-            console.log(`[YMS ET] FAILED ${etNumber} mode=${modeLabel}: taskInfo=${taskInfoDone} taskEntry=${taskEntryDone} loadTask=${createdLoadTaskId || "none"}`);
+            activityLoadAdded = validationLoadLinked;
+            if (verified) {
+              windowCheckinCompleted = true;
+              console.log(`[YMS ET] VERIFIED ${etNumber} mode=${modeLabel}: status=${verifyStatus} loadTask=${createdLoadTaskId} dock=${assignedDockId} operator=${selectedAssigneeName}`);
+            } else if (taskInfoDone && createdLoadTaskId) {
+              windowCheckinError = `LOAD vinculado, Load Task ${createdLoadTaskId} creado (${modeLabel}), pero YMS no confirmó Window Check-In (status=${verifyStatus || "unknown"}).`;
+              console.log(`[YMS ET] PARTIAL ${etNumber} mode=${modeLabel}: task created=${createdLoadTaskId} but readback not final. status=${verifyStatus}`);
+            } else {
+              activityLoadError = taskInfoError || taskEntryError || activityLoadError || "Final check-in steps did not complete.";
+              windowCheckinError = activityLoadError;
+              console.log(`[YMS ET] FAILED ${etNumber} mode=${modeLabel}: taskInfo=${taskInfoDone} taskEntry=${taskEntryDone} loadTask=${createdLoadTaskId || "none"}`);
+            }
           }
         }
       } else if (!checkinCompleted) {
@@ -1515,13 +1585,16 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         checkinCompleted, checkinCompleteError,
         activityLoadAdded, activityLoadError: activityLoadError || "",
         windowCheckinCompleted, windowCheckinError: windowCheckinError || "",
-        assignedOperator: windowCheckinCompleted ? AUTO_OPERATOR_NAME : "",
-        assignedOperatorId: windowCheckinCompleted ? AUTO_OPERATOR_ID : "",
+        assignedOperator: selectedAssigneeName || "",
+        assignedOperatorId: selectedAssigneeId || "",
+        assigneeSource: selectedAssigneeSource,
         assignedDockId: assignedDockId || "",
         assignedDockName: assignedDockName || "",
         loadId: tripInfo.loadId || "",
         loadNo: tripInfo.loadNo || "",
         loadTaskId: loadTaskId || "",
+        outboundTripInfoAttached: validationLoadLinked,
+        outboundLoadIds: validationLoadIds,
         orderId: orderId || "",
         orderIds,
         pickupNo: pickupNo || "",
@@ -1561,10 +1634,28 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       const loadId = firstNonEmptyString(payload.loadId);
       const orderIds = validationIds(payload.orderIds, payload.orderId);
       const requestedDockId = firstNonEmptyString(payload.dockId);
+      const requestedDockName = firstNonEmptyString(payload.dockName, payload.doorAssignment);
       const requestedLoadTaskId = firstNonEmptyString(payload.loadTaskId);
       const customerId = firstNonEmptyString(payload.customerId);
-      const assigneeUserId = firstNonEmptyString(payload.assigneeUserId);
-      const assigneeUserName = firstNonEmptyString(payload.assigneeUserName);
+      const entryTaskTag = firstNonEmptyString(payload.entryTask, payload.entryTaskTag, payload.loadTypeGroup);
+      const loadMode = resolveLoadMode(entryTaskTag);
+      const tripInfo = {
+        ...payload,
+        orderIds,
+        orderId: firstNonEmptyString(payload.orderId),
+        loadId,
+        dockId: requestedDockId,
+        dockName: requestedDockName,
+        doorAssignment: firstNonEmptyString(payload.doorAssignment, requestedDockName),
+        loadTaskId: requestedLoadTaskId,
+        direction: payload.direction || "outbound",
+        customerId
+      };
+      let selectedAssignee = {
+        assigneeUserId: firstNonEmptyString(payload.assigneeUserId, AUTO_OPERATOR_ID),
+        assigneeUserName: firstNonEmptyString(payload.assigneeUserName, payload.username, AUTO_OPERATOR_NAME),
+        source: payload.assigneeUserId || payload.assigneeUserName || payload.username ? "explicit_requested" : "default_operator"
+      };
 
       const respondWithValidation = (context = {}, extra = {}, statusCode = 200) => {
         const validation = buildCheckinValidation({
@@ -1588,6 +1679,14 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
           completed: validation.steps.find((step) => step.key === "windowCheckinCompleted")?.passed === true,
           etNumber,
           status: firstNonEmptyString(context.entryStatus),
+          outboundTripInfoAttached: Boolean(context.loadLinked),
+          outboundLoadIds: Array.isArray(context.loadIds) ? context.loadIds : [],
+          assignedDockId: firstNonEmptyString(context.dockId, requestedDockId),
+          assignedDockName: firstNonEmptyString(context.dockName, requestedDockName),
+          loadTaskId: firstNonEmptyString(context.loadTaskId, requestedLoadTaskId),
+          assignedOperatorId: selectedAssignee.assigneeUserId || "",
+          assignedOperator: selectedAssignee.assigneeUserName || "",
+          assigneeSource: selectedAssignee.source || "",
           validation,
           ...extra
         }, statusCode);
@@ -1608,12 +1707,12 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         return;
       }
 
-      let etDetail;
+      let etDetail = null;
       try {
-        etDetail = await ymsGetRequest(ymsToken, "/entry-ticket/" + encodeURIComponent(etNumber) + "/window-checkin-detail");
+        etDetail = await ymsGetRequest(ymsToken, `/entry-ticket/${encodeURIComponent(etNumber)}/window-checkin-detail`);
       } catch {
         try {
-          etDetail = await ymsGetRequest(ymsToken, "/self-check-in/" + encodeURIComponent(etNumber) + "/entry-detail");
+          etDetail = await ymsGetRequest(ymsToken, `/self-check-in/${encodeURIComponent(etNumber)}/entry-detail`);
         } catch {
           respondWithValidation({}, { reason: "WISE/YMS detail could not be read. Please retry." });
           return;
@@ -1623,23 +1722,39 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       let readback = extractYmsReadback(etDetail, loadId);
       const detailValue = asObject(etDetail?.data || etDetail);
       const createdSource = firstNonEmptyString(detailValue.createdSource);
+      const wmsToken = await getWmsBearerToken().catch(() => null);
+      const wmsAuthHeader = wmsToken ? `Bearer ${wmsToken}` : "";
+      selectedAssignee = await resolveWiseAssignee(etNumber, payload, tripInfo, wmsAuthHeader);
+
+      const attachment = await ensureOutboundLoadAttached(ymsToken, etNumber, tripInfo);
+      readback = attachment.readback;
+      console.log(`[YMS window] Outbound LOAD attachment ET=${etNumber} DN=${orderIds.join(",") || "none"} LOAD=${loadId} attached=${readback.loadLinked} outboundLoadIds=${readback.loadIds.join(",") || "none"}`);
+
       let loadTaskId = firstNonEmptyString(requestedLoadTaskId, detailValue.loadTaskId, readback.loadTaskId);
-      let dockId = firstNonEmptyString(requestedDockId, readback.dockId, detailValue.dockId, detailValue.locationId);
-      console.log(`[YMS window] ET=${etNumber} status=${readback.entryStatus || "unknown"} source=${createdSource || "unknown"} loadTask=${loadTaskId || "none"} dock=${dockId || "none"}`);
+      let dockId = numericDockId(firstNonEmptyString(requestedDockId, readback.dockId, detailValue.dockId, detailValue.locationId));
+      let dockName = requestedDockName;
+      if (wmsAuthHeader) {
+        try {
+          const dockResolution = await resolveEtDock(etNumber, { ...tripInfo, dockId, dockName, loadTaskId }, wmsAuthHeader);
+          dockId = firstNonEmptyString(dockResolution.dockId, dockId);
+          dockName = firstNonEmptyString(dockResolution.dockName, dockName);
+          loadTaskId = firstNonEmptyString(loadTaskId, dockResolution.loadTaskId);
+        } catch (err) {
+          console.log(`[YMS window] Dock resolution failed for ${etNumber}: ${err.message}`);
+        }
+      }
+      console.log(`[YMS window] ET=${etNumber} status=${readback.entryStatus || "unknown"} source=${createdSource || "unknown"} outboundLoadIds=${readback.loadIds.join(",") || "none"} loadTask=${loadTaskId || "none"} dockId=${dockId || "none"} dockName=${dockName || "none"} assigneeId=${selectedAssignee.assigneeUserId || "none"} assigneeName=${selectedAssignee.assigneeUserName || "none"}`);
 
       const readbackContext = () => ({
         ...readback,
         dockId,
+        dockName,
         loadTaskId,
         wiseSynced: Boolean(readback.wiseSynced && numericDockId(dockId) && loadTaskId)
       });
 
-      if (readback.windowCheckinCompleted || loadTaskId) {
-        respondWithValidation(readbackContext(), {
-          reason: readback.windowCheckinCompleted
-            ? "Window Check-In readback completed."
-            : "Load Task exists, but final Window Check-In readback is still pending."
-        });
+      if (readback.windowCheckinCompleted) {
+        respondWithValidation(readbackContext(), { reason: "Window Check-In readback completed." });
         return;
       }
       if (createdSource && createdSource !== "SELF_CHECKIN") {
@@ -1650,9 +1765,40 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         respondWithValidation(readbackContext(), { reason: "This ET is not currently eligible for Window Check-In." });
         return;
       }
-      if (!numericDockId(dockId)) {
-        respondWithValidation(readbackContext(), { reason: "A verified numeric dock/location ID is required." });
+      if (!readback.loadLinked) {
+        respondWithValidation(readbackContext(), { reason: `LOAD ${loadId} was sent to the ET, but Activity/outboundLoadIds readback did not confirm it.` });
         return;
+      }
+      if (!numericDockId(dockId)) {
+        respondWithValidation(readbackContext(), { reason: "LOAD vinculado al ET, pero falta Dock válido para crear Load Task. Seleccione/asigne un dock." });
+        return;
+      }
+      if (!selectedAssignee.assigneeUserId) {
+        respondWithValidation(readbackContext(), { reason: "No se pudo validar el usuario asignado. Seleccione/asigne un usuario WISE válido." });
+        return;
+      }
+
+      if (!loadTaskId) {
+        if (!wmsAuthHeader) {
+          respondWithValidation(readbackContext(), { reason: "WMS authentication is unavailable for Load Task creation." }, 503);
+          return;
+        }
+        const taskResult = await createWmsLoadTask(wmsAuthHeader, {
+          dockId,
+          loadIds: [loadId],
+          assigneeUserId: selectedAssignee.assigneeUserId,
+          entryId: etNumber,
+          loadMode,
+          note: `Window completion: ET=${etNumber} LOAD=${loadId} dock=${dockName || dockId} assignee=${selectedAssignee.assigneeUserName}`
+        });
+        loadTaskId = firstNonEmptyString(taskResult.taskId);
+        if (!loadTaskId) {
+          respondWithValidation(readbackContext(), { reason: taskResult.error || "Load Task could not be created." });
+          return;
+        }
+        console.log(`[YMS window] WMS Load Task CREATED: taskId=${loadTaskId} ET=${etNumber} DN=${orderIds.join(",") || "none"} LOAD=${loadId} dockId=${dockId} dockName=${dockName || "none"} assigneeId=${selectedAssignee.assigneeUserId} assigneeName=${selectedAssignee.assigneeUserName}`);
+      } else {
+        console.log(`[YMS window] WMS Load Task REUSED: taskId=${loadTaskId} ET=${etNumber} LOAD=${loadId} dockId=${dockId} assigneeId=${selectedAssignee.assigneeUserId}`);
       }
 
       if (payload.driverInfo || payload.vehicleInfo) {
@@ -1664,29 +1810,33 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         }
       }
 
+      const taskEntryBody = {
+        entryId: etNumber,
+        loadIds: [loadId],
+        taskId: loadTaskId,
+        assignLocationId: dockId,
+        assigneeUserName: selectedAssignee.assigneeUserName,
+        inYardAction: "PRE_LOAD"
+      };
       try {
-        await attachTripInfo(ymsToken, etNumber, {
-          direction: payload.direction || "outbound",
-          customerId,
-          loadId,
-          loadNo: payload.loadNo || "",
-          receiptId: payload.receiptId || "",
-          poNo: payload.poNo || "",
-          referenceNo: payload.referenceNo || ""
-        });
-        console.log(`[YMS window] Trip info refreshed for ${etNumber}`);
+        await ymsPostRequest(ymsToken, "/entry-ticket/task-entry-checkin", taskEntryBody);
+        console.log(`[YMS window] task-entry-checkin accepted for ${etNumber}: loadIds=${loadId} taskId=${loadTaskId} dockId=${dockId} assignee=${selectedAssignee.assigneeUserName}`);
       } catch (err) {
-        console.log(`[YMS window] Trip info refresh failed for ${etNumber}: ${err.message}`);
+        console.log(`[YMS window] task-entry-checkin failed for ${etNumber}: ${err.message}`);
+        respondWithValidation(readbackContext(), { reason: "LOAD and Load Task are ready, but the yard task could not be activated." });
+        return;
       }
 
       const taskBody = {
         entryId: etNumber,
+        ...(customerId ? { customerId } : {}),
         outboundTripInfo: { customerId, loadIds: [loadId] },
         outboundTask: {
-          assignLocationId: numericDockId(dockId),
-          assigneeUserId,
-          assigneeUserName,
-          description: `Self-check-in window completion for load ${loadId}`
+          taskId: loadTaskId,
+          assignLocationId: dockId,
+          assigneeUserId: selectedAssignee.assigneeUserId,
+          assigneeUserName: selectedAssignee.assigneeUserName,
+          description: `Self-check-in ${loadMode} completion for load ${loadId} at ${dockName || dockId}`
         }
       };
 
@@ -1700,18 +1850,12 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       }
 
       for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
-          const detail = await ymsGetRequest(ymsToken, "/entry-ticket/" + encodeURIComponent(etNumber) + "/window-checkin-detail");
-          readback = extractYmsReadback(detail, loadId);
-          const value = asObject(detail?.data || detail);
-          loadTaskId = firstNonEmptyString(loadTaskId, value.loadTaskId, readback.loadTaskId);
-          dockId = firstNonEmptyString(dockId, readback.dockId, value.dockId, value.locationId);
-          console.log(`[YMS window] Readback #${attempt} ET=${etNumber} status=${readback.entryStatus || "unknown"} load=${readback.loadLinked} task=${readback.taskPresent} window=${readback.windowCheckinCompleted}`);
-          if (readback.windowCheckinCompleted && readback.loadLinked && readback.taskPresent) break;
-        } catch (err) {
-          console.log(`[YMS window] Readback #${attempt} failed for ${etNumber}: ${err.message}`);
-        }
+        if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+        readback = await readYmsCheckinReadback(ymsToken, etNumber, loadId);
+        loadTaskId = firstNonEmptyString(loadTaskId, readback.loadTaskId);
+        dockId = firstNonEmptyString(dockId, readback.dockId);
+        console.log(`[YMS window] Readback #${attempt} ET=${etNumber} status=${readback.entryStatus || "unknown"} outboundLoadIds=${readback.loadIds.join(",") || "none"} load=${readback.loadLinked} task=${readback.taskPresent} window=${readback.windowCheckinCompleted}`);
+        if (readback.windowCheckinCompleted && readback.loadLinked && readback.taskPresent) break;
       }
 
       const context = readbackContext();
@@ -2408,8 +2552,10 @@ function normalizedDockName(value) {
 
 function extractDockNameToken(value) {
   const text = firstNonEmptyString(value);
-  const match = text.match(/\bDOCK[\s_-]*\d+\b/i);
-  return match ? match[0] : text;
+  if (!text || /between\s+docks?/i.test(text)) return "";
+  const matches = [...text.matchAll(/\b(?:DOCK|DOOR)[\s_#-]*(\d+)\b/gi)];
+  const dockNumbers = [...new Set(matches.map((match) => match[1]))];
+  return dockNumbers.length === 1 ? `DOCK${dockNumbers[0]}` : "";
 }
 
 function chooseDockCandidate(etNumber, source, candidate) {
@@ -2476,14 +2622,15 @@ async function resolveDockNameLocation(etNumber, dockName, authHeader, source) {
   });
   const locations = extractWmsList(response);
   for (const location of locations) {
-    const locationName = firstNonEmptyString(location?.name, location?.akaName);
-    const locationType = firstNonEmptyString(location?.type, location?.category).toUpperCase();
-    if (normalizedDockName(locationName) !== normalizedName) {
+    const locationName = firstNonEmptyString(location?.name, location?.akaName, location?.tagName);
+    const locationNames = validationIds(location?.name, location?.akaName, location?.tagName).map(normalizedDockName);
+    const locationTypes = validationIds(location?.type, location?.category).map((value) => value.toUpperCase());
+    if (!locationNames.includes(normalizedName)) {
       console.log(`[YMS ET] Dock location candidate rejected for ${etNumber}: source=${source} reason=name_mismatch candidate=${locationName || "none"}`);
       continue;
     }
-    if (locationType !== "DOCK") {
-      console.log(`[YMS ET] Dock location candidate rejected for ${etNumber}: source=${source} reason=not_dock_type type=${locationType || "none"}`);
+    if (!locationTypes.includes("DOCK")) {
+      console.log(`[YMS ET] Dock location candidate rejected for ${etNumber}: source=${source} reason=not_dock_type types=${locationTypes.join(",") || "none"}`);
       continue;
     }
     const chosen = chooseDockCandidate(etNumber, `${source}_location_lookup`, { dockId: location?.id, dockName: locationName });
@@ -2493,26 +2640,151 @@ async function resolveDockNameLocation(etNumber, dockName, authHeader, source) {
   return { dockId: "", dockName };
 }
 
+function normalizedAssigneeValue(value) {
+  return firstNonEmptyString(value).toUpperCase().replace(/[^A-Z0-9@.]/g, "");
+}
+
+async function resolveWiseAssignee(etNumber, payload, tripInfo, authHeader) {
+  const explicitUserId = firstNonEmptyString(payload.assigneeUserId, tripInfo.assigneeUserId);
+  const explicitUserName = firstNonEmptyString(
+    payload.assigneeUserName,
+    payload.username,
+    tripInfo.assigneeUserName,
+    tripInfo.username
+  );
+  const hasExplicitAssignee = Boolean(explicitUserId || explicitUserName);
+  if (!hasExplicitAssignee) {
+    console.log(`[YMS ET] Assignee selected for ${etNumber}: source=default userId=${AUTO_OPERATOR_ID || "none"} userName=${AUTO_OPERATOR_NAME || "none"}`);
+    return {
+      assigneeUserId: AUTO_OPERATOR_ID,
+      assigneeUserName: AUTO_OPERATOR_NAME,
+      source: "default_operator",
+      requestedUsername: ""
+    };
+  }
+
+  let operators = [];
+  if (authHeader) {
+    try {
+      operators = await fetchWiseOperators(authHeader);
+    } catch (err) {
+      console.log(`[YMS ET] Assignee lookup failed for ${etNumber}: ${err.message}`);
+    }
+  }
+  const requested = normalizedAssigneeValue(explicitUserName);
+  const matched = operators.find((operator) => {
+    if (explicitUserId && operator.id === explicitUserId) return true;
+    if (!requested) return false;
+    return validationIds(operator.userName, operator.name, operator.fullName, operator.email)
+      .some((value) => normalizedAssigneeValue(value) === requested);
+  });
+  if (matched) {
+    const selectedName = firstNonEmptyString(explicitUserName, matched.userName, matched.name, matched.fullName);
+    console.log(`[YMS ET] Assignee selected for ${etNumber}: source=explicit_verified userId=${matched.id} userName=${selectedName}`);
+    return {
+      assigneeUserId: matched.id,
+      assigneeUserName: selectedName,
+      source: "explicit_verified",
+      requestedUsername: explicitUserName
+    };
+  }
+  if (explicitUserId && explicitUserName) {
+    console.log(`[YMS ET] Assignee selected for ${etNumber}: source=explicit_id userId=${explicitUserId} userName=${explicitUserName}`);
+    return {
+      assigneeUserId: explicitUserId,
+      assigneeUserName: explicitUserName,
+      source: "explicit_id",
+      requestedUsername: explicitUserName
+    };
+  }
+  console.log(`[YMS ET] Assignee rejected for ${etNumber}: source=explicit_unresolved userId=${explicitUserId || "none"} userName=${explicitUserName || "none"}`);
+  return {
+    assigneeUserId: "",
+    assigneeUserName: explicitUserName,
+    source: "explicit_unresolved",
+    requestedUsername: explicitUserName
+  };
+}
+
+async function readYmsCheckinReadback(ymsToken, etNumber, loadId) {
+  try {
+    const detail = await ymsGetRequest(ymsToken, `/entry-ticket/${encodeURIComponent(etNumber)}/window-checkin-detail`);
+    return extractYmsReadback(detail, loadId);
+  } catch {
+    try {
+      const detail = await ymsGetRequest(ymsToken, `/self-check-in/${encodeURIComponent(etNumber)}/entry-detail`);
+      return extractYmsReadback(detail, loadId);
+    } catch {
+      return extractYmsReadback({}, loadId);
+    }
+  }
+}
+
+async function ensureOutboundLoadAttached(ymsToken, etNumber, tripInfo) {
+  const loadId = firstNonEmptyString(tripInfo.loadId);
+  let readback = await readYmsCheckinReadback(ymsToken, etNumber, loadId);
+  console.log(`[YMS ET] outboundTripInfo readback for ${etNumber}: expectedLoad=${loadId || "none"} loadIds=${readback.loadIds.join(",") || "none"} attached=${readback.loadLinked}`);
+  if (readback.loadLinked) return { readback, attachAccepted: true, source: "existing_readback" };
+
+  try {
+    await attachTripInfo(ymsToken, etNumber, tripInfo);
+    console.log(`[YMS ET] outboundTripInfo reattached for ${etNumber}: loadIds=${loadId}`);
+  } catch (err) {
+    console.log(`[YMS ET] outboundTripInfo reattach failed for ${etNumber}: ${err.message}`);
+  }
+  readback = await readYmsCheckinReadback(ymsToken, etNumber, loadId);
+  if (readback.loadLinked) return { readback, attachAccepted: true, source: "trip_info_readback" };
+
+  let attachAccepted = false;
+  try {
+    await ymsPostRequest(ymsToken, "/entry-ticket/task-info-checkin", {
+      entryId: etNumber,
+      ...(tripInfo.customerId ? { customerId: tripInfo.customerId } : {}),
+      outboundTripInfo: { customerId: tripInfo.customerId || "", loadIds: [loadId] }
+    });
+    attachAccepted = true;
+    console.log(`[YMS ET] outboundTripInfo task-info attach accepted for ${etNumber}: loadIds=${loadId}`);
+  } catch (err) {
+    console.log(`[YMS ET] outboundTripInfo task-info attach failed for ${etNumber}: ${err.message}`);
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+    readback = await readYmsCheckinReadback(ymsToken, etNumber, loadId);
+    console.log(`[YMS ET] outboundTripInfo readback #${attempt} for ${etNumber}: loadIds=${readback.loadIds.join(",") || "none"} attached=${readback.loadLinked}`);
+    if (readback.loadLinked) break;
+  }
+  return { readback, attachAccepted, source: attachAccepted ? "task_info_readback" : "unconfirmed" };
+}
+
+function resolveLoadMode(entryTaskTag) {
+  return /preload|pick.?up.?preload/i.test(firstNonEmptyString(entryTaskTag)) ? "PRE_LOAD" : "LIVE_LOAD";
+}
+
 async function resolveEtDock(etNumber, tripInfo, authHeader) {
   let selected = chooseDockCandidate(etNumber, "trip_info", { dockId: tripInfo.dockId, dockName: tripInfo.dockName });
   let existingLoadTaskId = firstNonEmptyString(tripInfo.loadTaskId);
-  const dockNames = [];
-  if (selected.dockName) dockNames.push({ name: selected.dockName, source: "trip_info" });
+  const dockNames = validationIds(tripInfo.dockName, tripInfo.doorAssignment, tripInfo.assignment)
+    .map((name) => ({ name, source: name === tripInfo.dockName ? "trip_info" : "portal_assignment" }));
 
   if (!selected.dockId) {
-    const stagedResult = await lookupStagedDoor(tripInfo.loadId, authHeader);
-    const stagedIsDock = stagedResult?.source === "dock_location"
-      || firstNonEmptyString(stagedResult?.locationType, stagedResult?.locationCategory).toUpperCase() === "DOCK";
-    if (stagedIsDock) {
-      selected = chooseDockCandidate(etNumber, "staged_inventory", {
-        dockId: stagedResult.locationId || stagedResult.dockId,
-        dockName: stagedResult.locationName || stagedResult.door
-      });
-    } else if (stagedResult?.locationId || stagedResult?.locationName) {
-      console.log(`[YMS ET] Dock candidate rejected for ${etNumber}: source=staged_inventory reason=location_is_not_dock locationId=${stagedResult.locationId || "none"} type=${stagedResult.locationType || stagedResult.locationCategory || "none"} name=${stagedResult.locationName || "none"}`);
+    try {
+      const stagedResult = await lookupStagedDoor(tripInfo.loadId, authHeader);
+      const stagedTypes = validationIds(stagedResult?.locationType, stagedResult?.locationCategory).map((value) => value.toUpperCase());
+      const stagedIsDock = stagedResult?.source === "dock_location" || stagedTypes.includes("DOCK");
+      if (stagedIsDock) {
+        selected = chooseDockCandidate(etNumber, "staged_inventory", {
+          dockId: stagedResult.locationId || stagedResult.dockId,
+          dockName: stagedResult.locationName || stagedResult.door
+        });
+      } else if (stagedResult?.locationId || stagedResult?.locationName) {
+        console.log(`[YMS ET] Dock candidate rejected for ${etNumber}: source=staged_inventory reason=location_is_not_dock locationId=${stagedResult.locationId || "none"} types=${stagedTypes.join(",") || "none"} name=${stagedResult.locationName || "none"}`);
+      }
+      if (stagedResult?.locationName) dockNames.push({ name: stagedResult.locationName, source: "staged_inventory" });
+      if (stagedResult?.door) dockNames.push({ name: stagedResult.door, source: "staged_inventory_door" });
+    } catch (err) {
+      console.log(`[YMS ET] Staged dock lookup failed for ${etNumber}: ${err.message}`);
     }
-    if (stagedResult?.locationName) dockNames.push({ name: stagedResult.locationName, source: "staged_inventory" });
-    if (stagedResult?.door) dockNames.push({ name: stagedResult.door, source: "staged_inventory_door" });
   }
 
   try {
@@ -2537,8 +2809,9 @@ async function resolveEtDock(etNumber, tripInfo, authHeader) {
     }
   }
 
+  const uniqueNames = [...new Map(dockNames.filter((item) => item.name).map((item) => [normalizedDockName(item.name), item])).values()];
+  console.log(`[YMS ET] Dock name candidates for ${etNumber}: ${uniqueNames.map((item) => `${item.source}=${item.name}`).join(" | ") || "none"}`);
   if (!selected.dockId) {
-    const uniqueNames = [...new Map(dockNames.filter((item) => item.name).map((item) => [normalizedDockName(item.name), item])).values()];
     for (const candidate of uniqueNames) {
       try {
         const resolved = await resolveDockNameLocation(etNumber, candidate.name, authHeader, candidate.source);

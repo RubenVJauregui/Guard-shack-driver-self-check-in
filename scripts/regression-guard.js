@@ -38,8 +38,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet55'), 'index.html must load cache-busted app.js?v=strictet55');
-assert(index.includes('styles.css?v=strictet55'), 'index.html must load cache-busted styles.css?v=strictet55');
+assert(index.includes('app.js?v=strictet56'), 'index.html must load cache-busted app.js?v=strictet56');
+assert(index.includes('styles.css?v=strictet56'), 'index.html must load cache-busted styles.css?v=strictet56');
 
 
 
@@ -121,7 +121,7 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet55";'), 'app build version must be strictet55');
+assert(app.includes('const APP_BUILD_VERSION = "strictet56";'), 'app build version must be strictet56');
 assert(index.includes('id="refreshPortalBtn"') && index.includes('type="button"'), 'portal must provide a non-submit refresh fallback button');
 assert(app.includes('window.addEventListener("keydown"') && app.includes('event.ctrlKey') && app.includes('event.shiftKey'), 'portal must listen for Ctrl + Shift keyboard shortcuts');
 assert(app.includes('String(event.key || "").toLowerCase() === "s"'), 'portal refresh shortcut must use Ctrl + Shift + S');
@@ -166,7 +166,8 @@ assert(server.includes('/wms-bam/outbound/order/search-by-paging'), 'server must
 assert(server.includes('function wmsLookupAny(identifier, authHeader)'), 'server must try load lookup before DN/order lookup');
 assert(server.includes('const wmsResult = await wmsLookupAny(rn, `Bearer ${bearerToken}`);'), '/api/wms-lookup must use the combined WMS lookup');
 assert(server.includes('matchType: "dn-order"'), 'DN/order matches must be identified in WMS lookup result');
-assert(compactApp.includes('dockId: wmsResult.dockId || ""') && compactApp.includes('dockName: wmsResult.dockName || ""'), 'client must forward verified WMS dock context when available');
+assert(compactApp.includes('const requestedDockId = String(wmsResult.dockId || data.dockId || "").trim();'), 'client must preserve verified WMS dock ID context');
+assert(compactApp.includes('const requestedDockName = String(wmsResult.dockName || data.dockName || portalDockAssignment || "").trim();'), 'client must fall back to the portal/customer dock assignment name');
 
 // Strict staged-door and Load Task dock resolution lock.
 const inventorySearchStart = server.indexOf('function wmsSearchInventoryByLoad(loadId, authHeader)');
@@ -182,9 +183,18 @@ assert(server.includes('const dockId = numericDockId(params.dockId);') && server
 assert(server.includes('async function resolveEtDock(etNumber, tripInfo, authHeader)'), 'ET flow must use centralized robust dock resolution');
 assert(server.includes('/wms-bam/outbound/load-task/search-by-paging') && server.includes('loadIds: [loadId]'), 'dock resolution must inspect existing WMS Load Tasks by load ID');
 assert(server.includes('/wms-bam/outbound/load/${encodeURIComponent(loadId)}'), 'dock resolution must inspect WMS load detail when earlier sources do not resolve a dock');
-assert(server.includes('function extractDockNameToken(value)') && server.includes('/\\bDOCK[\\s_-]*\\d+\\b/i'), 'dock-name fallback must extract verified DOCK numbers from display text');
+assert(server.includes('function extractDockNameToken(value)') && server.includes('(?:DOCK|DOOR)') && server.includes('/between\\s+docks?/i'), 'dock-name fallback must extract one unambiguous DOCK/DOOR number from display text');
+const dockTokenStart = server.indexOf('function extractDockNameToken(value)');
+const dockTokenEnd = server.indexOf('function chooseDockCandidate', dockTokenStart);
+const dockTokenSource = server.slice(dockTokenStart, dockTokenEnd);
+const extractDockNameTokenForTest = new Function('firstNonEmptyString', `${dockTokenSource}; return extractDockNameToken;`)((value) => String(value || '').trim());
+assert(extractDockNameTokenForTest('dock34') === 'DOCK34' && extractDockNameTokenForTest('Go to the door at Dock 40') === 'DOCK40', 'dock-name parser must normalize compact and assignment-text dock names');
+assert(extractDockNameTokenForTest('Go to the door between docks 165 & 166.') === '', 'ambiguous between-docks instructions must not become one numeric dock');
 assert(server.includes('/wms-bam/wms-location/search') && server.includes('types: ["DOCK"]') && server.includes('statuses: ["USABLE"]'), 'dock-name fallback must verify a usable WMS DOCK location');
 assert(server.includes('reason=non_numeric_id') && server.includes('reason=location_is_not_dock') && server.includes('source=${source} dockId=${dockId}'), 'dock resolution must log chosen source and rejected candidates');
+assert(server.includes('async function resolveWiseAssignee(etNumber, payload, tripInfo, authHeader)'), 'server must resolve explicit username/name to a WISE assignee ID');
+assert(server.includes('Dock name candidates for ${etNumber}') && server.includes('portal_assignment'), 'dock resolution must log and inspect portal dock-name candidates');
+assert(server.includes('locationTypes.includes("DOCK")'), 'dock-name lookup must accept verified DOCK type or category evidence');
 
 // Strict ET creation lock.
 assert(server.includes('if (req.method === "POST" && url.pathname === "/api/yms-entry-ticket")'), 'server must expose /api/yms-entry-ticket');
@@ -202,7 +212,18 @@ const entryTaskTagFirstUse = server.indexOf('entryTaskTag || ""', ymsEntryTicket
 assert(server.includes('function asObject(value)') && server.includes('function firstNonEmptyString(...values)'), 'server must provide defensive optional payload normalizers');
 assert(entryTaskTagDefinition > ymsEntryTicketRoute && entryTaskTagDefinition < entryTaskTagFirstUse, 'server must define entryTaskTag before strict ET mode selection uses it');
 assert(server.includes('payload.entryTask') && server.includes('payload.entryTaskTag') && server.includes('payload.loadTypeGroup') && server.includes('tripInfo.entryTask') && server.includes('tripInfo.entryTaskTag'), 'entryTaskTag must use available payload and trip task context');
-// strictet55 centralized Validation Engine lock.
+const strictEtRoute = server.slice(ymsEntryTicketRoute, server.indexOf('if (req.method === "POST" && url.pathname === "/api/yms-window-checkin-complete")', ymsEntryTicketRoute));
+const attachLoadIndex = strictEtRoute.indexOf('ensureOutboundLoadAttached(ymsToken, etNumber, tripInfo)');
+const createLoadTaskIndex = strictEtRoute.indexOf('createWmsLoadTask(wmsAuthHeader');
+assert(attachLoadIndex >= 0 && createLoadTaskIndex > attachLoadIndex, 'ET flow must verify Activity/outboundLoadIds before WMS Load Task creation');
+assert(server.includes('function collectYmsReadbackLoadIds(value)') && server.includes('outboundLoadIds|outboundLoads|outboundLoadInfos|loadIds|loads') && server.includes('visit(value);'), 'readback must recursively validate Activity/outboundLoadIds and outbound trip load arrays');
+assert(server.includes('outboundTripInfoAttached: validationLoadLinked') && server.includes('outboundLoadIds: validationLoadIds'), 'ET response must expose strict LOAD attachment evidence');
+assert(server.includes('LOAD vinculado al ET, pero falta Dock válido para crear Load Task. Seleccione/asigne un dock.'), 'missing dock must return the required business warning');
+assert(compactApp.includes('entryTask: data.entryTask || "", entryTaskTag: data.entryTask || ""'), 'Window Check-In request must preserve entry task context');
+assert(compactApp.includes('dockName: etStatus.assignedDockName || requestedDockName || assignment || ""'), 'Window Check-In request must include dock name fallback');
+assert(compactApp.includes('assigneeUserId: etStatus.assignedOperatorId || requestedAssigneeUserId') && compactApp.includes('assigneeUserName: etStatus.assignedOperator || requestedAssigneeUserName'), 'Window Check-In request must include selected/default assignee context');
+assert(compactApp.includes('username: requestedUsername'), 'frontend must pass username context consistently');
+// strictet56 centralized Validation Engine lock.
 const validationKeys = ['etCreated', 'dnLinked', 'loadLinked', 'validDock', 'loadTaskCreated', 'windowCheckinCompleted', 'qrCreated', 'wiseSynced'];
 assert(server.includes('const CHECKIN_VALIDATION_LABELS = Object.freeze({'), 'server must define centralized bilingual validation labels');
 assert(server.includes('function buildCheckinValidation(context = {})'), 'server must expose the centralized Validation Engine helper');
@@ -260,4 +281,4 @@ assert(!read('staging-door-config.js').includes('Fontana'), 'staging config must
 assert(!read('staging-door-config.js').includes('SharkNinja'), 'staging config must not contain stale SharkNinja comments');
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: strictet55 Valley View validation behavior is locked.');
+console.log('Regression guard passed: strictet56 Valley View assignment-ready validation behavior is locked.');
