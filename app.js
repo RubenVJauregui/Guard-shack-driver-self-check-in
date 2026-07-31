@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet57";
+const APP_BUILD_VERSION = "strictet58";
 const CHECKIN_VALIDATION_STEPS = Object.freeze([
   { key: "etCreated", label: { es: "ET creado", en: "ET created" } },
   { key: "dnLinked", label: { es: "DN vinculado", en: "DN linked" } },
@@ -312,6 +312,10 @@ nextBtn.addEventListener("click", async () => {
     if (!validateScreen()) return;
 
     const data = getFormData();
+    if (hasInvalidLoadReference(data)) {
+      showInvalidLoadReferenceError();
+      return;
+    }
     const identifiers = getLoadIdentifiers(data);
 
     if (!identifiers.length) {
@@ -640,6 +644,10 @@ function buildReview() {
 async function completeCheckin() {
   resetCheckinValidation();
   const data = getFormData();
+  if (hasInvalidLoadReference(data)) {
+    showInvalidLoadReferenceError();
+    return false;
+  }
   const identifiers = getLoadIdentifiers(data);
   const rnValue = identifiers[0] || "";
   const duplicateEtSignature = getDuplicateEtSignature(data);
@@ -932,8 +940,23 @@ async function completeCheckin() {
   return true;
 }
 
+function isInvalidLoadReference(value = "") {
+  const compact = String(value || "").trim().toUpperCase().replace(/[\s./_-]+/g, "");
+  return compact === "NA";
+}
+
+function hasInvalidLoadReference(data = {}) {
+  return [data.referenceNo, data.loadNo].some((value) => isInvalidLoadReference(value));
+}
+
+function showInvalidLoadReferenceError() {
+  showActionError("NA is not accepted. Please enter a valid PO / RN / Load # / DN before continuing.");
+}
+
 function getLoadIdentifiers(data) {
-  return [...new Set([data.referenceNo, data.loadNo].map((value) => (value || "").trim()).filter(Boolean))];
+  return [...new Set([data.referenceNo, data.loadNo]
+    .map((value) => (value || "").trim())
+    .filter((value) => value && !isInvalidLoadReference(value)))];
 }
 
 function getDuplicateEtSignature(data) {

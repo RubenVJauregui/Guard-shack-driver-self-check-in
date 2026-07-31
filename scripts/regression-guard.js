@@ -38,8 +38,8 @@ assert(!exists('test-lincoln-only.js'), 'test-lincoln-only.js must not exist');
 assert(!exists('lincoln-checkin-qr.png'), 'lincoln-checkin-qr.png must not exist');
 
 // Asset cache-busting lock.
-assert(index.includes('app.js?v=strictet57'), 'index.html must load cache-busted app.js?v=strictet57');
-assert(index.includes('styles.css?v=strictet57'), 'index.html must load cache-busted styles.css?v=strictet57');
+assert(index.includes('app.js?v=strictet58'), 'index.html must load cache-busted app.js?v=strictet58');
+assert(index.includes('styles.css?v=strictet58'), 'index.html must load cache-busted styles.css?v=strictet58');
 
 
 
@@ -68,6 +68,13 @@ assert(!app.includes('return isDropOffFull() || isDropOffEmpty() || isPickupEmpt
 assert(app.includes('Drop Off Full must collect RN/load details and create an ET before showing the final message.'), 'Drop Off Full must require RN/load details and ET before final message');
 assert(app.includes('showImmediateTaskInstructionScreen(getImmediateTaskInstruction())'), 'immediate instruction tasks must show their message on the next screen');
 assert(app.includes('if (currentScreen === 4)'), 'load detail validation must happen on Step 4');
+
+// Invalid placeholder load reference lock.
+assert(app.includes('function isInvalidLoadReference(value = "")'), 'app must explicitly detect invalid load reference placeholders');
+assert(app.includes('compact === "NA"'), 'NA/N.A./N/A placeholders must be rejected as load references');
+assert(app.includes('showInvalidLoadReferenceError()'), 'invalid load references must show a specific error');
+assert(app.includes('NA is not accepted. Please enter a valid PO / RN / Load # / DN before continuing.'), 'invalid load reference error copy must be explicit');
+assert(app.includes('if (hasInvalidLoadReference(data))'), 'invalid load references must be blocked before WMS lookup and ET/QR creation');
 assert(app.includes('function updateLoginModeRequirements()'), 'first-screen login mode must update required fields so Continue works');
 assert(app.includes('function validateLoginScreen()'), 'screen 0 Continue must have an explicit login validator and advance path');
 assert(app.includes('if (currentScreen === 0)') && app.includes('showScreen(1);'), 'screen 0 Continue must explicitly advance to screen 1');
@@ -121,7 +128,7 @@ assert(app.includes('const EXCEL_DEFAULT_DOOR = DRIVER_INSTRUCTIONS.DEFAULT_165_
 assert(app.includes('const ASSISTANCE_DOOR_INSTRUCTION = DRIVER_INSTRUCTIONS.FALLBACK_DETAIL_165_166;'), 'fallback main instruction must be the locked docks 165/166 instruction');
 assert(app.includes('const WISE_NOT_FOUND_INSTRUCTION = DRIVER_INSTRUCTIONS.DEFAULT_165_166;'), 'WISE not-found fallback must be locked to docks 165/166');
 assert(app.includes('const FALLBACK_AFTER_MAX_ATTEMPTS = WISE_NOT_FOUND_INSTRUCTION;'), 'failed lookup fallback must use WISE not-found instruction');
-assert(app.includes('const APP_BUILD_VERSION = "strictet57";'), 'app build version must be strictet57');
+assert(app.includes('const APP_BUILD_VERSION = "strictet58";'), 'app build version must be strictet58');
 assert(index.includes('id="refreshPortalBtn"') && index.includes('type="button"'), 'portal must provide a non-submit refresh fallback button');
 assert(app.includes('window.addEventListener("keydown"') && app.includes('event.ctrlKey') && app.includes('event.shiftKey'), 'portal must listen for Ctrl + Shift keyboard shortcuts');
 assert(app.includes('String(event.key || "").toLowerCase() === "s"'), 'portal refresh shortcut must use Ctrl + Shift + S');
@@ -234,7 +241,7 @@ assert(compactApp.includes('dockName: etStatus.assignedDockName || requestedDock
 assert(compactApp.includes('assigneeUserId: etStatus.assignedOperatorId || requestedAssigneeUserId') && compactApp.includes('assigneeUserName: etStatus.assignedOperator || requestedAssigneeUserName'), 'Window Check-In request must include selected/default assignee context');
 assert(compactApp.includes('username: requestedUsername'), 'frontend must pass username context consistently');
 assert(app.includes('controller.abort(), 60000') && app.includes('controller.abort(), 45000'), 'ET and Window Check-In requests must allow strict task reuse/readback finalization to complete');
-// strictet57 idempotent Load Task reuse and finalization lock.
+// strictet58 idempotent Load Task reuse and finalization lock.
 assert(server.includes('async function findExistingLoadTask(authHeader, expected = {})'), 'server must centralize active existing Load Task discovery');
 assert(server.includes('{ entryIds: [entryId] }') && server.includes('{ loadIds: [loadId] }'), 'existing Load Task discovery must search by ET and LOAD');
 assert(server.includes('entryTicketView.entryStatus') && server.includes('entryTicketView.loadTaskId') && server.includes('outboundTask?.taskId'), 'YMS readback must detect production nested status and task IDs');
@@ -247,7 +254,7 @@ assert(server.includes('manual completion detected') && server.includes('taskSou
 assert(server.includes('taskSource: firstNonEmptyString(context.taskSource, taskSource)') && server.includes('taskStatus: firstNonEmptyString(context.taskStatus, taskStatus)'), 'Validation Engine response must expose existing/manual task evidence');
 assert(server.includes('Load Task existe, pero Window Check-In no fue confirmado. El guardia debe usar Save and Continue o revisar dock/usuario.'), 'partial completion must show the required existing-task guidance');
 assert(server.includes('taskId: loadTaskId') && server.includes('/entry-ticket/task-entry-checkin') && server.includes('/entry-ticket/task-info-checkin'), 'existing task ID must be reused for both YMS finalization calls');
-// strictet57 centralized Validation Engine lock.
+// strictet58 centralized Validation Engine lock.
 const validationKeys = ['etCreated', 'dnLinked', 'loadLinked', 'validDock', 'loadTaskCreated', 'windowCheckinCompleted', 'qrCreated', 'wiseSynced'];
 assert(server.includes('const CHECKIN_VALIDATION_LABELS = Object.freeze({'), 'server must define centralized bilingual validation labels');
 assert(server.includes('function buildCheckinValidation(context = {})'), 'server must expose the centralized Validation Engine helper');
@@ -305,4 +312,4 @@ assert(!read('staging-door-config.js').includes('Fontana'), 'staging config must
 assert(!read('staging-door-config.js').includes('SharkNinja'), 'staging config must not contain stale SharkNinja comments');
 
 if (process.exitCode) process.exit(process.exitCode);
-console.log('Regression guard passed: strictet57 Valley View idempotent Load Task finalization is locked.');
+console.log('Regression guard passed: strictet58 Valley View idempotent Load Task finalization is locked.');
