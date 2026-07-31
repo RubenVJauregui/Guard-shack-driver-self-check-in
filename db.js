@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const crypto = require('crypto');
 
 let pool;
 function getPool() {
@@ -20,6 +21,12 @@ function classifyFacility(record) {
 async function initDb() {
   const p = getPool();
   if (!p) { console.log('[DB] DATABASE_URL not configured; dashboard will show no stored records.'); return false; }
+  await p.query(`CREATE TABLE IF NOT EXISTS checkin_photos (
+    id TEXT PRIMARY KEY,
+    checkin_id INTEGER REFERENCES checkins(id) ON DELETE SET NULL,
+    et_number TEXT, identity_url TEXT, photo_type TEXT, file_name TEXT, mime_type TEXT,
+    data_url TEXT NOT NULL, facility_id TEXT DEFAULT 'LT_F1', created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
   await p.query(`CREATE TABLE IF NOT EXISTS checkins (
     id SERIAL PRIMARY KEY,
     et_number TEXT, driver_first_name TEXT, driver_last_name TEXT, driver_name TEXT,
@@ -58,6 +65,8 @@ async function initDb() {
   ];
   for (const sql of migrations) await p.query(sql);
   await p.query('CREATE INDEX IF NOT EXISTS idx_checkins_created_at ON checkins(created_at DESC)');
+  await p.query('CREATE INDEX IF NOT EXISTS idx_checkin_photos_checkin_id ON checkin_photos(checkin_id)');
+  await p.query('CREATE INDEX IF NOT EXISTS idx_checkin_photos_et_number ON checkin_photos(et_number)');
   await p.query('CREATE INDEX IF NOT EXISTS idx_checkins_facility ON checkins(facility_id)');
   await p.query('CREATE INDEX IF NOT EXISTS idx_checkins_assignment ON checkins(assignment_status)');
   await p.query('CREATE INDEX IF NOT EXISTS idx_checkins_search ON checkins USING gin (to_tsvector(\'english\', coalesce(driver_name,\'\') || \' \' || coalesce(carrier_name,\'\') || \' \' || coalesce(equipment_no,\'\') || \' \' || coalesce(et_number,\'\') || \' \' || coalesce(load_no,\'\') || \' \' || coalesce(reference_no,\'\')))');
@@ -97,6 +106,46 @@ async function insertCheckin(r) {
   const sql = `INSERT INTO checkins (et_number,driver_first_name,driver_last_name,driver_name,driver_phone,driver_license,driver_email,carrier_name,usdot,vehicle_type,license_plate,equipment_type,equipment_no,entry_task,load_type_group,reference_no,load_no,comments,customer,customer_id,customer_code,direction,receipt_id,po_no,load_id,wms_load_no,door_assignment,has_driver_photo,has_equipment_photo,has_load_photo,photo_count,identity_url,basic_info_attached,trip_info_attached,email_notification_sent,status,raw,facility_id,facility_name) VALUES (${vals.map((_,i)=>'$'+(i+1)).join(',')}) RETURNING id`;
   const result = await p.query(sql, vals);
   return result.rows[0].id;
+}
+
+async function insertCheckinPhotos(checkinId, record = {}, photos = []) {
+  const p = getPool();
+  if (!p || !Array.isArray(photos) || !photos.length) return [];
+  const saved = [];
+  for (const photo of photos.slice(0, 12)) {
+    const dataUrl = String(photo.dataUrl || '');
+    if (!dataUrl.startsWith('data:image/')) continue;
+    const id = crypto.randomUUID();
+    const vals = [
+      id,
+      checkinId || null,
+      record.etNumber || record.et_number || '',
+      record.identityUrl || record.identity_url || '',
+      photo.photoType || photo.type || 'other',
+      photo.fileName || photo.file_name || '',
+      photo.mimeType || photo.mime_type || 'image/jpeg',
+      dataUrl,
+      'LT_F1'
+    ];
+    await p.query(`INSERT INTO checkin_photos (id, checkin_id, et_number, identity_url, photo_type, file_name, mime_type, data_url, facility_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, vals);
+    saved.push({ id, url: `/api/checkin-photos/${id}`, photoType: vals[4], fileName: vals[5], mimeType: vals[6] });
+  }
+  return saved;
+}
+
+async function getCheckinPhotoById(id) {
+  const p = getPool();
+  if (!p) return null;
+  const result = await p.query("SELECT * FROM checkin_photos WHERE id=$1 AND facility_id='LT_F1'", [id]);
+  return result.rows[0] || null;
+}
+
+async function getCheckinPhotosByCheckinId(checkinId) {
+  const p = getPool();
+  if (!p) return [];
+  const result = await p.query("SELECT id, photo_type, file_name, mime_type, created_at FROM checkin_photos WHERE checkin_id=$1 AND facility_id='LT_F1' ORDER BY created_at", [checkinId]);
+  return result.rows.map((row) => ({ ...row, url: `/api/checkin-photos/${row.id}` }));
 }
 
 async function queryCheckins(q={}) {
@@ -186,4 +235,4 @@ async function updateLoadTask(id, data) {
   return result.rows[0] || null;
 }
 
-module.exports={initDb,insertCheckin,queryCheckins,getSummary,getCheckinById,updateCheckin,loadTypeGroup,EDITABLE_FIELDS,updateAssignment,updateLoadTask};
+module.exports={initDb,insertCheckin,insertCheckinPhotos,getCheckinPhotoById,getCheckinPhotosByCheckinId,queryCheckins,getSummary,getCheckinById,updateCheckin,loadTypeGroup,EDITABLE_FIELDS,updateAssignment,updateLoadTask};

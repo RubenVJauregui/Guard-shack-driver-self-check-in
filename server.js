@@ -1122,6 +1122,9 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
     try {
       const body = await readBody(req);
       const record = JSON.parse(body || "{}");
+      const photos = Array.isArray(record.photos) ? record.photos : [];
+      delete record.photos;
+      if (photos.length) record.photoCount = photos.length;
       let emailNotification = { sent: false };
       try {
         emailNotification = await sendStoredCheckinEmailNotification(record);
@@ -1131,6 +1134,14 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         console.log(`[Email notification] Stored check-in email failed: ${err.message}`);
       }
       const id = await db.insertCheckin(record);
+      let savedPhotos = [];
+      if (id && photos.length) {
+        try {
+          savedPhotos = await db.insertCheckinPhotos(id, record, photos);
+        } catch (photoErr) {
+          console.log(`[Photo] save failed for checkin #${id}: ${photoErr.message}`);
+        }
+      }
 
       // --- Automatic post-check-in workflow (non-blocking) ---
       if (id) {
@@ -1139,7 +1150,7 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
         }));
       }
 
-      sendJson(res, { saved: Boolean(id), id, emailNotificationSent: Boolean(emailNotification.sent) });
+      sendJson(res, { saved: Boolean(id), id, photoSaved: savedPhotos.length, photoUrls: savedPhotos.map((photo) => photo.url), emailNotificationSent: Boolean(emailNotification.sent) });
     } catch (err) {
       console.log(`[DB] checkin save endpoint error: ${err.message}`);
       sendJson(res, { saved: false });
@@ -2017,6 +2028,31 @@ if (req.method === "GET" && url.pathname.startsWith("/api/checkins/") && !url.pa
       const validation = buildCheckinValidation({ qrCreated: false });
       logCheckinValidation("yms-window-checkin-error", "", validation);
       sendJson(res, { completed: false, reason: "Window Check-In could not be validated.", validation });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/api/checkin-photos/")) {
+    const id = path.basename(url.pathname);
+    try {
+      const photo = await db.getCheckinPhotoById(id);
+      if (!photo || !photo.data_url) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+        res.end("Photo not found");
+        return;
+      }
+      const match = String(photo.data_url).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
+      if (!match) {
+        res.writeHead(415, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+        res.end("Unsupported photo format");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": match[1], "Cache-Control": "private, no-store" });
+      res.end(Buffer.from(match[2], "base64"));
+    } catch (err) {
+      console.log(`[Photo] read failed: ${err.message}`);
+      res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end("Photo read failed");
     }
     return;
   }

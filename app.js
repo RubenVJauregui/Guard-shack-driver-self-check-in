@@ -71,7 +71,7 @@ const DRIVER_INSTRUCTIONS = Object.freeze({
   UNIS_DRIVER_DOCK_93: "Please proceed to dock 93"
 });
 
-const APP_BUILD_VERSION = "strictet58";
+const APP_BUILD_VERSION = "strictet59";
 const CHECKIN_VALIDATION_STEPS = Object.freeze([
   { key: "etCreated", label: { es: "ET creado", en: "ET created" } },
   { key: "dnLinked", label: { es: "DN vinculado", en: "DN linked" } },
@@ -782,6 +782,7 @@ async function completeCheckin() {
 
   const identityResult = await saveIdentityRecord(identityRecord);
   const identityUrl = identityResult.url;
+  const uploadedPhotos = await collectCheckinPhotos();
 
   try {
     await fetch("/api/checkins", {
@@ -816,10 +817,11 @@ async function completeCheckin() {
         doorAssignment: assignment,
         doorSource: doorResult.source || "",
         stagedLocation: doorResult.stagedLocation || "",
-        hasDriverPhoto: Boolean(form.elements.driverPhoto?.files?.length),
-        hasEquipmentPhoto: Boolean(form.elements.equipmentPhoto?.files?.length),
-        hasLoadPhoto: Boolean(form.elements.loadPhoto?.files?.length),
-        photoCount: (form.elements.driverPhoto?.files?.length || 0) + (form.elements.equipmentPhoto?.files?.length || 0) + (form.elements.loadPhoto?.files?.length || 0),
+        hasDriverPhoto: uploadedPhotos.some((photo) => photo.photoType === "driver-license"),
+        hasEquipmentPhoto: uploadedPhotos.some((photo) => photo.photoType === "equipment"),
+        hasLoadPhoto: uploadedPhotos.some((photo) => photo.photoType === "load"),
+        photoCount: uploadedPhotos.length,
+        photos: uploadedPhotos,
         identityUrl,
         basicInfoAttached: Boolean(etStatus.basicInfoAttached),
         tripInfoAttached: Boolean(etStatus.tripInfoAttached),
@@ -1054,6 +1056,44 @@ function loadImageElement(src) {
     img.onerror = reject;
     img.src = src;
   });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function collectCheckinPhotos() {
+  const fields = [
+    { fieldName: "driverPhoto", photoType: "driver-license" },
+    { fieldName: "equipmentPhoto", photoType: "equipment" },
+    { fieldName: "loadPhoto", photoType: "load" }
+  ];
+  const photos = [];
+  for (const { fieldName, photoType } of fields) {
+    const input = form.elements[fieldName];
+    if (!input || !input.files) continue;
+    for (const file of [...input.files].slice(0, 6)) {
+      if (!file || !file.type || !file.type.startsWith("image/")) continue;
+      try {
+        const rawDataUrl = await readFileAsDataUrl(file);
+        const resizedDataUrl = await thumbnailDataUrl(rawDataUrl, photoType === "driver-license" ? 900 : 1200);
+        photos.push({
+          photoType,
+          fileName: file.name || `${photoType}.jpg`,
+          mimeType: "image/jpeg",
+          dataUrl: resizedDataUrl || rawDataUrl
+        });
+      } catch (err) {
+        console.warn(`[Photo] Could not prepare ${photoType} image`, err);
+      }
+    }
+  }
+  return photos;
 }
 
 function setIdentityQr(identityUrl) {
